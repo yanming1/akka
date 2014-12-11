@@ -1056,7 +1056,7 @@ object AkkaBuild extends Build {
 
   lazy val resolverSettings = {
     // should we be allowed to use artifacts published to the local maven repository
-    if(System.getProperty("akka.build.useLocalMavenResolver", "false").toBoolean)
+    if(System.getProperty("akka.build.useLocalMavenResolver", "true").toBoolean)
       Seq(resolvers += mavenLocalResolver)
     else Seq.empty
   } ++ {
@@ -1491,7 +1491,7 @@ object Dependencies {
     val scalaCheckVersion = System.getProperty("akka.build.scalaCheckVersion", "1.11.3")
     val scalaContinuationsVersion = System.getProperty("akka.build.scalaContinuationsVersion", "1.0.1")
 
-    val reactiveStreamsVersion = System.getProperty("akka.build.reactiveStreamsVersion", "1.0.0.M3")
+    val reactiveStreamsVersion = System.getProperty("akka.build.reactiveStreamsVersion", "1.0.0.M3-ktoso")
 
     val publishedAkkaVersion = "2.3.7"
   }

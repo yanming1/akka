@@ -118,7 +118,7 @@ private[akka] class TickPublisher(initialDelay: FiniteDuration, interval: Finite
       subscriber = s
       tryOnSubscribe(s, subscription)
     case _ ⇒
-      rejectAdditionalSubscriber(s, exposedPublisher)
+      rejectAdditionalSubscriber(s)
   }
 
   override def postStop(): Unit = {

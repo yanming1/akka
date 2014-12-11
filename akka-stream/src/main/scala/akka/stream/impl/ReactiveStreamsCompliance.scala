@@ -32,8 +32,8 @@ private[stream] object ReactiveStreamsCompliance {
   final def rejectDuplicateSubscriber[T](subscriber: Subscriber[T]): Unit =
     tryOnError(subscriber, canNotSubscribeTheSameSubscriberMultipleTimesException)
 
-  final def rejectAdditionalSubscriber[T](subscriber: Subscriber[T], rejector: Publisher[T]): Unit =
-    tryOnError(subscriber, new IllegalStateException(s"$rejector $SupportsOnlyASingleSubscriber"))
+  final def rejectAdditionalSubscriber[T](subscriber: Subscriber[T]): Unit =
+    tryOnError(subscriber, new IllegalStateException(SupportsOnlyASingleSubscriber))
 
   final def rejectDueToOverflow[T](subscriber: Subscriber[T]): Unit =
     tryOnError(subscriber, totalPendingDemandMustNotExceedLongMaxValueException)

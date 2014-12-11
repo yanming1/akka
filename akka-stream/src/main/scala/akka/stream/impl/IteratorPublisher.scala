@@ -57,23 +57,25 @@ private[akka] class IteratorPublisher(iterator: Iterator[Any], settings: Materia
       exposedPublisher.takePendingSubscribers() foreach registerSubscriber
       state = Initialized
       // hasNext might throw
-      try {
-        if (iterator.hasNext) context.become(active)
-        else stop(Completed)
-      } catch { case NonFatal(e) ⇒ stop(Errored(e)) }
-
+      (try {
+        if (iterator.hasNext) state // No change
+        else Completed
+      } catch {
+        case NonFatal(e) ⇒ Errored(e)
+      }) match {
+        case stopState: StopState ⇒ stop(stopState)
+        case _                    ⇒ context become active
+      }
   }
 
   def active: Receive = {
     case RequestMore(_, elements) ⇒
-      if (elements < 1)
-        stop(Errored(numberOfElementsInRequestMustBePositiveException))
+      if (elements < 1) stop(Errored(numberOfElementsInRequestMustBePositiveException))
       else {
         downstreamDemand += elements
-        if (downstreamDemand < 0) // Long has overflown, reactive-streams specification rule 3.17
-          stop(Errored(totalPendingDemandMustNotExceedLongMaxValueException))
-        else
-          push()
+        // Long has overflown, reactive-streams specification rule 3.17
+        if (downstreamDemand < 0) stop(Errored(totalPendingDemandMustNotExceedLongMaxValueException))
+        else push()
       }
     case PushMore ⇒
       push()
@@ -85,55 +87,50 @@ private[akka] class IteratorPublisher(iterator: Iterator[Any], settings: Materia
 
   // note that iterator.hasNext is always true when calling push, completing as soon as hasNext is false
   private def push(): Unit = {
-    @tailrec def doPush(n: Int): Unit =
-      if (downstreamDemand > 0) {
+    // Returns whether it has more elements in the iterator or not
+    @tailrec def doPush(n: Int, hasNext: Boolean): Boolean =
+      if (hasNext && n > 0 && downstreamDemand > 0) {
         downstreamDemand -= 1
-        val hasNext = {
-          tryOnNext(subscriber, iterator.next())
-          iterator.hasNext
-        }
-        if (!hasNext)
-          stop(Completed)
-        else if (n == 0 && downstreamDemand > 0)
-          self ! PushMore
-        else
-          doPush(n - 1)
+        tryOnNext(subscriber, iterator.next())
+        doPush(n - 1, iterator.hasNext)
+      } else hasNext
+
+    val hasMoreElements =
+      try doPush(n = maxPush, hasNext = true) catch {
+        case sv: SpecViolation ⇒ throw sv.violation // FIXME is escalation the right course of action here?
+        case NonFatal(e) ⇒
+          stop(Errored(e))
+          true // we have to assume that there were more elements, to avoid double-onError below
       }
-
-    try doPush(maxPush) catch {
-      case NonFatal(e) ⇒ stop(Errored(e))
-    }
+    if (!hasMoreElements)
+      stop(Completed)
+    else if (downstreamDemand > 0)
+      self ! PushMore
   }
 
-  private def registerSubscriber(sub: Subscriber[Any]): Unit = {
-    subscriber match {
-      case null ⇒
-        subscriber = sub
-        tryOnSubscribe(sub, new ActorSubscription(self, sub))
-      case _ ⇒
-        rejectAdditionalSubscriber(sub, exposedPublisher)
+  private def registerSubscriber(sub: Subscriber[Any]): Unit =
+    if (subscriber ne null) rejectAdditionalSubscriber(sub)
+    else {
+      subscriber = sub
+      tryOnSubscribe(sub, new ActorSubscription(self, sub))
     }
-  }
 
-  private def stop(reason: StopState): Unit = {
+  private def stop(reason: StopState): Unit =
     state match {
       case _: StopState ⇒ throw new IllegalStateException(s"Already stopped. Transition attempted from $state to $reason")
       case _ ⇒
         state = reason
         context.stop(self)
     }
-  }
 
   override def postStop(): Unit = {
     state match {
       case Unitialized | Initialized | Cancelled ⇒
         if (exposedPublisher ne null) exposedPublisher.shutdown(ActorPublisher.NormalShutdownReason)
       case Completed ⇒
-        tryOnComplete(subscriber)
-        exposedPublisher.shutdown(ActorPublisher.NormalShutdownReason)
+        try tryOnComplete(subscriber) finally exposedPublisher.shutdown(ActorPublisher.NormalShutdownReason)
       case Errored(e) ⇒
-        tryOnError(subscriber, e)
-        exposedPublisher.shutdown(Some(e))
+        try tryOnError(subscriber, e) finally exposedPublisher.shutdown(Some(e))
     }
     // if onComplete or onError throws we let normal supervision take care of it,
     // see reactive-streams specification rule 2:13

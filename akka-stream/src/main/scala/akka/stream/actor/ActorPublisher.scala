@@ -119,11 +119,11 @@ trait ActorPublisher[T] extends Actor {
   import ActorPublisher.Internal._
   import ActorPublisherMessage._
   import ReactiveStreamsCompliance._
-  private val state = ActorPublisherState(context.system)
-  private var subscriber: Subscriber[Any] = _
-  private var demand = 0L
-  private var lifecycleState: LifecycleState = PreSubscriber
-  private var scheduledSubscriptionTimeout: Cancellable = StreamSubscriptionTimeoutSupport.NoopSubscriptionTimeout
+  private[this] val state = ActorPublisherState(context.system)
+  private[this] var subscriber: Subscriber[Any] = _
+  private[this] var demand = 0L
+  private[this] var lifecycleState: LifecycleState = PreSubscriber
+  private[this] var scheduledSubscriptionTimeout: Cancellable = StreamSubscriptionTimeoutSupport.NoopSubscriptionTimeout
 
   /**
    * Subscription timeout after which this actor will become Canceled and reject any incoming "late" subscriber.
@@ -215,9 +215,11 @@ trait ActorPublisher[T] extends Actor {
   def onError(cause: Throwable): Unit = lifecycleState match {
     case Active | PreSubscriber ⇒
       lifecycleState = ErrorEmitted(cause)
-      if (subscriber ne null) // otherwise onError will be called when the subscription arrives
+      if (subscriber ne null) {
+        // otherwise onError will be called when the subscription arrives
         tryOnError(subscriber, cause)
-      subscriber = null // not used after onError
+        subscriber = null // not used after onError
+      }
     case _: ErrorEmitted ⇒
       throw new IllegalStateException("onError must only be called once")
     case Completed ⇒
@@ -231,13 +233,10 @@ trait ActorPublisher[T] extends Actor {
   protected[akka] override def aroundReceive(receive: Receive, msg: Any): Unit = msg match {
     case Request(n) ⇒
       if (n < 1) {
-        if (lifecycleState == Active)
-          onError(numberOfElementsInRequestMustBePositiveException)
-        else
-          super.aroundReceive(receive, msg)
+        onError(numberOfElementsInRequestMustBePositiveException)
       } else {
         demand += n
-        if (demand < 0 && lifecycleState == Active) // Long has overflown
+        if (demand < 0) // Long has overflown
           onError(totalPendingDemandMustNotExceedLongMaxValueException)
         else
           super.aroundReceive(receive, msg)
@@ -253,9 +252,8 @@ trait ActorPublisher[T] extends Actor {
         case ErrorEmitted(cause) ⇒ tryOnError(sub, cause)
         case Completed           ⇒ tryOnComplete(sub)
         case Active | Canceled ⇒
-          tryOnError(sub,
-            if (subscriber eq sub) ReactiveStreamsCompliance.canNotSubscribeTheSameSubscriberMultipleTimesException
-            else ReactiveStreamsCompliance.canNotSubscribeTheSameSubscriberMultipleTimesException)
+          if (subscriber eq sub) rejectDuplicateSubscriber(sub)
+          else rejectAdditionalSubscriber(sub)
       }
 
     case Cancel ⇒
