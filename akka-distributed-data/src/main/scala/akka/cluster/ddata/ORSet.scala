@@ -158,6 +158,21 @@ final class ORSet[A] private[akka] (
 
   type T = ORSet[A]
 
+  // Optimization for add/remove followed by merge, which is very common
+  // and merge should just fast forward to the new set
+  private var ancestor: ORSet[A] = null
+
+  private def assignAncestor(newSet: ORSet[A]): ORSet[A] = {
+    newSet.ancestor = if (this.ancestor eq null) this else this.ancestor
+    this.ancestor = null // only one level, for GC
+    newSet
+  }
+
+  private def clearAncestor(mergedSet: ORSet[A]): ORSet[A] = {
+    mergedSet.ancestor = null
+    mergedSet
+  }
+
   /**
    * Scala API
    */
@@ -193,7 +208,7 @@ final class ORSet[A] private[akka] (
   private[akka] def add(node: UniqueAddress, element: A): ORSet[A] = {
     val newVvector = vvector + node
     val newDot = new VersionVector(versions = TreeMap(node -> newVvector.versions(node)))
-    new ORSet(elementsMap = elementsMap.updated(element, newDot), vvector = newVvector)
+    assignAncestor(new ORSet(elementsMap = elementsMap.updated(element, newDot), vvector = newVvector))
   }
 
   /**
@@ -210,7 +225,7 @@ final class ORSet[A] private[akka] (
    * INTERNAL API
    */
   private[akka] def remove(node: UniqueAddress, element: A): ORSet[A] =
-    copy(elementsMap = elementsMap - element)
+    assignAncestor(copy(elementsMap = elementsMap - element))
 
   /**
    * Removes all elements from the set, but keeps the history.
@@ -222,7 +237,8 @@ final class ORSet[A] private[akka] (
   /**
    * INTERNAL API
    */
-  private[akka] def clear(node: UniqueAddress): ORSet[A] = copy(elementsMap = Map.empty)
+  private[akka] def clear(node: UniqueAddress): ORSet[A] =
+    assignAncestor(copy(elementsMap = Map.empty))
 
   /**
    * When element is in this Set but not in that Set:
@@ -238,18 +254,23 @@ final class ORSet[A] private[akka] (
    * Keep only common dots, and dots that are not dominated by the other sides version vector
    */
   override def merge(that: ORSet[A]): ORSet[A] = {
-    val thisKeys = elementsMap.keySet
-    val thatKeys = that.elementsMap.keySet
-    val commonKeys = thisKeys.intersect(thatKeys)
-    val thisUniqueKeys = thisKeys -- commonKeys
-    val thatUniqueKeys = thatKeys -- commonKeys
+    if ((this eq that) || (this.ancestor eq that)) clearAncestor(this)
+    else if (that.ancestor eq this) clearAncestor(that)
+    else {
+      val thisKeys = elementsMap.keySet
+      val thatKeys = that.elementsMap.keySet
+      val commonKeys = thisKeys.intersect(thatKeys)
+      val thisUniqueKeys = thisKeys -- commonKeys
+      val thatUniqueKeys = thatKeys -- commonKeys
 
-    val entries00 = ORSet.mergeCommonKeys(commonKeys, this, that)
-    val entries0 = ORSet.mergeDisjointKeys(thisUniqueKeys, this.elementsMap, that.vvector, entries00)
-    val entries = ORSet.mergeDisjointKeys(thatUniqueKeys, that.elementsMap, this.vvector, entries0)
-    val mergedVvector = this.vvector.merge(that.vvector)
+      val entries00 = ORSet.mergeCommonKeys(commonKeys, this, that)
+      val entries0 = ORSet.mergeDisjointKeys(thisUniqueKeys, this.elementsMap, that.vvector, entries00)
+      val entries = ORSet.mergeDisjointKeys(thatUniqueKeys, that.elementsMap, this.vvector, entries0)
+      val mergedVvector = this.vvector.merge(that.vvector)
 
-    new ORSet(entries, mergedVvector)
+      clearAncestor(this)
+      new ORSet(entries, mergedVvector)
+    }
   }
 
   override def needPruningFrom(removedNode: UniqueAddress): Boolean =
