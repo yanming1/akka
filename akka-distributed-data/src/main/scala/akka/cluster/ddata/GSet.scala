@@ -55,7 +55,7 @@ final case class GSet[A](elements: Set[A]) extends ReplicatedData with Replicate
    */
   def add(element: A): GSet[A] = copy(elements + element)
 
-  override def merge(that: GSet[A]): GSet[A] = copy(elements ++ that.elements)
+  override def merge(that: GSet[A]): GSet[A] = copy(elements union that.elements)
 }
 
 object GSetKey {
