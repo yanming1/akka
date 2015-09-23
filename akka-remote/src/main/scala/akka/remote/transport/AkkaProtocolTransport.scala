@@ -43,6 +43,17 @@ private[remote] class AkkaProtocolSettings(config: Config) {
   val RequireCookie: Boolean = getBoolean("akka.remote.require-cookie")
 
   val SecureCookie: Option[String] = if (RequireCookie) Some(getString("akka.remote.secure-cookie")) else None
+
+  val HandshakeTimeout: FiniteDuration = {
+    val enabledTransports = config.getStringList("akka.remote.enabled-transports")
+    if (enabledTransports.contains("akka.remote.netty.tcp"))
+      config.getMillisDuration("akka.remote.netty.tcp.connection-timeout")
+    else if (enabledTransports.contains("akka.remote.netty.ssl"))
+      config.getMillisDuration("akka.remote.netty.ssl.connection-timeout")
+    else
+      config.getMillisDuration("akka.remote.handshake-timeout").requiring(_ > Duration.Zero,
+        "handshake-timeout must be > 0")
+  }
 }
 
 private[remote] object AkkaProtocolTransport { //Couldn't these go into the Remoting Extension/ RemoteSettings instead?
@@ -213,6 +224,8 @@ private[transport] object ProtocolStateActor {
 
   case object HeartbeatTimer extends NoSerializationVerificationNeeded
 
+  case object HandshakeTimer extends NoSerializationVerificationNeeded
+
   final case class Handle(handle: AssociationHandle) extends NoSerializationVerificationNeeded
 
   final case class HandleListenerRegistered(listener: HandleEventListener) extends NoSerializationVerificationNeeded
@@ -301,6 +314,7 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
   }
 
   val localAddress = localHandshakeInfo.origin
+  val handshakeTimerKey = "handshake-timer"
 
   initialData match {
     case d: OutboundUnassociated ⇒
@@ -309,6 +323,7 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
 
     case d: InboundUnassociated ⇒
       d.wrappedHandle.readHandlerPromise.success(ActorHandleEventListener(self))
+      initHandshakeTimer()
       startWith(WaitHandshake, d)
   }
 
@@ -323,7 +338,8 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
       wrappedHandle.readHandlerPromise.trySuccess(ActorHandleEventListener(self))
       if (sendAssociate(wrappedHandle, localHandshakeInfo)) {
         failureDetector.heartbeat()
-        initTimers()
+        initHeartbeatTimer()
+        initHandshakeTimer()
         goto(WaitHandshake) using OutboundUnderlyingAssociated(statusPromise, wrappedHandle)
 
       } else {
@@ -339,7 +355,7 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
 
   }
 
-  // Timeout of this state is implicitly handled by the failure detector
+  // Timeout of this state is handled by the HandshakeTimer
   when(WaitHandshake) {
     case Event(Disassociated(info), _) ⇒
       stop(FSM.Failure(info))
@@ -352,6 +368,7 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
 
         case Associate(handshakeInfo) ⇒
           failureDetector.heartbeat()
+          cancelTimer(handshakeTimerKey)
           goto(Open) using AssociatedWaitHandler(
             notifyOutboundHandler(wrappedHandle, handshakeInfo, statusPromise),
             wrappedHandle,
@@ -381,7 +398,8 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
           if (!settings.RequireCookie || info.cookie == settings.SecureCookie) {
             sendAssociate(wrappedHandle, localHandshakeInfo)
             failureDetector.heartbeat()
-            initTimers()
+            initHeartbeatTimer()
+            cancelTimer(handshakeTimerKey)
             goto(Open) using AssociatedWaitHandler(
               notifyInboundHandler(wrappedHandle, info, associationHandler),
               wrappedHandle,
@@ -401,6 +419,16 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
           stop()
 
       }
+
+    case Event(HandshakeTimer, OutboundUnderlyingAssociated(_, wrappedHandle)) ⇒
+      sendDisassociate(wrappedHandle, Unknown)
+      stop(FSM.Failure(TimeoutReason("No response from remote for outbound association. Handshake timed out after " +
+        s"[${settings.HandshakeTimeout.toMillis} ms].")))
+
+    case Event(HandshakeTimer, InboundUnassociated(_, wrappedHandle)) ⇒
+      sendDisassociate(wrappedHandle, Unknown)
+      stop(FSM.Failure(TimeoutReason("No response from remote for inbound association. Handshake timed out after " +
+        s"[${settings.HandshakeTimeout.toMillis} ms].")))
 
   }
 
@@ -452,8 +480,12 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
       stay() using ListenerReady(listener, wrappedHandle)
   }
 
-  private def initTimers(): Unit = {
+  private def initHeartbeatTimer(): Unit = {
     setTimer("heartbeat-timer", HeartbeatTimer, settings.TransportHeartBeatInterval, repeat = true)
+  }
+
+  private def initHandshakeTimer(): Unit = {
+    setTimer(handshakeTimerKey, HandshakeTimer, settings.HandshakeTimeout, repeat = false)
   }
 
   private def handleTimers(wrappedHandle: AssociationHandle): State = {
@@ -464,7 +496,7 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
       // send disassociate just to be sure
       sendDisassociate(wrappedHandle, Unknown)
       stop(FSM.Failure(TimeoutReason(s"No response from remote. " +
-        s"Handshake timed out or transport failure detector triggered. (internal state was $stateName)")))
+        s"Transport failure detector triggered. (internal state was $stateName)")))
     }
   }
 
