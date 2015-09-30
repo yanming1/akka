@@ -145,12 +145,20 @@ private[stream] object GraphInterpreter {
       i = 0
       while (i < connectionCount) {
         if (ins(i) ne null) {
-          inHandlers(i) = logics(inOwners(i)).inHandlers(ins(i).id)
-          logics(inOwners(i)).inToConn(ins(i).id) = i
+          val l = logics(inOwners(i))
+          l.inHandlers(ins(i).id) match {
+            case null ⇒ throw new IllegalStateException(s"no handler defined in stage $l for port ${ins(i)}")
+            case h    ⇒ inHandlers(i) = h
+          }
+          l.inToConn(ins(i).id) = i
         }
         if (outs(i) ne null) {
-          outHandlers(i) = logics(outOwners(i)).outHandlers(outs(i).id)
-          logics(outOwners(i)).outToConn(outs(i).id) = i
+          val l = logics(outOwners(i))
+          l.outHandlers(outs(i).id) match {
+            case null ⇒ throw new IllegalStateException(s"no handler defined in stage $l for port ${outs(i)}")
+            case h    ⇒ outHandlers(i) = h
+          }
+          l.outToConn(outs(i).id) = i
         }
         i += 1
       }

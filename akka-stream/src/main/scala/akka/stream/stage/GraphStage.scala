@@ -9,7 +9,7 @@ import akka.stream.impl.StreamLayout.Module
 import akka.stream.impl.fusing.{ GraphModule, GraphInterpreter }
 import akka.stream.impl.fusing.GraphInterpreter.GraphAssembly
 
-import scala.collection.mutable
+import scala.collection.{ immutable, mutable }
 import scala.concurrent.duration.FiniteDuration
 
 abstract class GraphStageWithMaterializedValue[S <: Shape, M] extends Graph[S, M] {
@@ -72,6 +72,54 @@ private object TimerMessages {
   final case class Timer(id: Int, task: Cancellable)
 }
 
+object GraphStageLogic {
+  /**
+   * Input handler that terminates the stage upon receiving completion.
+   * The stage fails upon receiving a failure.
+   */
+  class EagerTerminateInput extends InHandler {
+    override def onPush(): Unit = ()
+  }
+
+  /**
+   * Input handler that does not terminate the stage upon receiving completion.
+   * The stage fails upon receiving a failure.
+   */
+  class IgnoreTerminateInput extends InHandler {
+    override def onPush(): Unit = ()
+    override def onUpstreamFinish(): Unit = ()
+  }
+
+  /**
+   * Input handler that does not terminate the stage upon receiving completion
+   * nor failure.
+   */
+  class TotallyIgnorantInput extends InHandler {
+    override def onPush(): Unit = ()
+    override def onUpstreamFinish(): Unit = ()
+    override def onUpstreamFailure(ex: Throwable): Unit = ()
+  }
+
+  /**
+   * Output handler that terminates the stage upon cancellation.
+   */
+  class EagerTerminateOutput extends OutHandler {
+    override def onPull(): Unit = ()
+  }
+
+  /**
+   * Output handler that does not terminate the stage upon cancellation.
+   */
+  class IgnoreTerminateOutput extends OutHandler {
+    override def onPull(): Unit = ()
+    override def onDownstreamFinish(): Unit = ()
+  }
+
+  private object DoNothing extends (() ⇒ Unit) {
+    def apply(): Unit = ()
+  }
+}
+
 /**
  * Represents the processing logic behind a [[GraphStage]]. Roughly speaking, a subclass of [[GraphStageLogic]] is a
  * collection of the following parts:
@@ -88,6 +136,7 @@ private object TimerMessages {
 abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
   import GraphInterpreter._
   import TimerMessages._
+  import GraphStageLogic._
 
   def this(shape: Shape) = this(shape.inlets.size, shape.outlets.size)
 
@@ -129,7 +178,44 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
   /**
    * INTERNAL API
    */
-  private[stream] var interpreter: GraphInterpreter = _
+  private[this] var _interpreter: GraphInterpreter = _
+
+  /**
+   * INTENRAL API
+   */
+  private[stream] def interpreter_=(gi: GraphInterpreter) = _interpreter = gi
+
+  /**
+   * INTERNAL API
+   */
+  private[stream] def interpreter: GraphInterpreter =
+    if (_interpreter == null)
+      throw new IllegalStateException("not yet initialized: only setHandler is allowed in GraphStageLogic constructor")
+    else _interpreter
+
+  /**
+   * Input handler that terminates the stage upon receiving completion.
+   * The stage fails upon receiving a failure.
+   */
+  final protected def eagerTerminateInput: InHandler = new EagerTerminateInput
+  /**
+   * Input handler that does not terminate the stage upon receiving completion.
+   * The stage fails upon receiving a failure.
+   */
+  final protected def ignoreTerminateInput: InHandler = new IgnoreTerminateInput
+  /**
+   * Input handler that does not terminate the stage upon receiving completion
+   * nor failure.
+   */
+  final protected def totallyIgnorantInput: InHandler = new TotallyIgnorantInput
+  /**
+   * Output handler that terminates the stage upon cancellation.
+   */
+  final protected def eagerTerminateOutput: OutHandler = new EagerTerminateOutput
+  /**
+   * Output handler that does not terminate the stage upon cancellation.
+   */
+  final protected def ignoreTerminateOutput: OutHandler = new IgnoreTerminateOutput
 
   /**
    * Assigns callbacks for the events for an [[Inlet]]
@@ -138,12 +224,27 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
     handler.ownerStageLogic = this
     inHandlers(in.id) = handler
   }
+
+  /**
+   * Retrieves the current callback for the events on the given [[Inlet]]
+   */
+  final protected def getHandler(in: Inlet[_]): InHandler = {
+    inHandlers(in.id)
+  }
+
   /**
    * Assigns callbacks for the events for an [[Outlet]]
    */
   final protected def setHandler(out: Outlet[_], handler: OutHandler): Unit = {
     handler.ownerStageLogic = this
     outHandlers(out.id) = handler
+  }
+
+  /**
+   * Retrieves the current callback for the events on the given [[Outlet]]
+   */
+  final protected def getHandler(out: Outlet[_]): OutHandler = {
+    outHandlers(out.id)
   }
 
   private def conn[T](in: Inlet[T]): Int = inToConn(in.id)
@@ -298,6 +399,232 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * Indicates whether the port has been closed. A closed port cannot be pushed.
    */
   final protected def isClosed[T](out: Outlet[T]): Boolean = (interpreter.portStates(conn(out)) & OutClosed) != 0
+
+  /**
+   * Read a number of elements from the given inlet and continue with the given function,
+   * suspending execution if necessary. This action replaces the [[InHandler]]
+   * for the given inlet if suspension is needed and reinstalls the current
+   * handler upon receiving the last `onPush()` signal (before invoking the `andThen` function).
+   */
+  final protected def readN[T](in: Inlet[T], n: Int)(andThen: Array[T] ⇒ Unit): Unit =
+    if (n < 0) throw new IllegalArgumentException("cannot read negative number of elements")
+    else if (n == 0) andThen(new Array[Any](0).asInstanceOf[Array[T]])
+    else {
+      val result = new Array[Any](n).asInstanceOf[Array[T]]
+      var pos = 0
+      if (isAvailable(in)) {
+        val elem = grab(in)
+        result(0) = elem
+        if (n == 1) {
+          andThen(result)
+        } else {
+          pos = 1
+          requireNotReading(in)
+          setHandler(in, new Reading(in, n - 1, getHandler(in))(elem ⇒ {
+            result(pos) = elem
+            pos += 1
+            if (pos == n) andThen(result)
+          }))
+        }
+      } else {
+        requireNotReading(in)
+        setHandler(in, new Reading(in, n, getHandler(in))(elem ⇒ {
+          result(pos) = elem
+          pos += 1
+          if (pos == n) andThen(result)
+        }))
+      }
+    }
+
+  /**
+   * Read an element from the given inlet and continue with the given function,
+   * suspending execution if necessary. This action replaces the [[InHandler]]
+   * for the given inlet if suspension is needed and reinstalls the current
+   * handler upon receiving the `onPush()` signal (before invoking the `andThen` function).
+   */
+  final protected def read[T](in: Inlet[T])(andThen: T ⇒ Unit): Unit = {
+    if (isAvailable(in)) {
+      val elem = grab(in)
+      andThen(elem)
+    } else {
+      requireNotReading(in)
+      setHandler(in, new Reading(in, 1, getHandler(in))(andThen))
+    }
+  }
+
+  /**
+   * Abort outstanding (suspended) reading for the given inlet, if there is any.
+   * This will reinstall the replaced handler that was in effect before the `read`
+   * call.
+   */
+  final protected def abortReading(in: Inlet[_]): Unit =
+    getHandler(in) match {
+      case r: Reading[_] ⇒
+        setHandler(in, r.previous)
+      case _ ⇒
+    }
+
+  private def requireNotReading(in: Inlet[_]): Unit =
+    if (getHandler(in).isInstanceOf[Reading[_]])
+      throw new IllegalStateException("already reading on inlet " + in)
+
+  /**
+   * Caution: for n==1 andThen is called after resetting the handler, for
+   * other values it is called without resetting the handler.
+   */
+  private class Reading[T](in: Inlet[T], private var n: Int, val previous: InHandler)(andThen: T ⇒ Unit) extends InHandler {
+    override def onPush(): Unit = {
+      val elem = grab(in)
+      if (n == 1) setHandler(in, previous)
+      else n -= 1
+      andThen(elem)
+    }
+    override def onUpstreamFinish(): Unit = previous.onUpstreamFinish()
+    override def onUpstreamFailure(ex: Throwable): Unit = previous.onUpstreamFailure(ex)
+  }
+
+  /**
+   * Emit a sequence of elements through the given outlet and continue with the given thunk
+   * afterwards, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal (before invoking the `andThen` function).
+   */
+  final protected def emit[T](out: Outlet[T], elems: immutable.Iterable[T], andThen: () ⇒ Unit): Unit =
+    emit(out, elems.iterator, andThen)
+
+  /**
+   * Emit a sequence of elements through the given outlet, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal.
+   */
+  final protected def emit[T](out: Outlet[T], elems: immutable.Iterable[T]): Unit = emit(out, elems, DoNothing)
+
+  /**
+   * Emit a sequence of elements through the given outlet and continue with the given thunk
+   * afterwards, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal (before invoking the `andThen` function).
+   */
+  final protected def emit[T](out: Outlet[T], elems: Iterator[T], andThen: () ⇒ Unit): Unit =
+    if (elems.hasNext) {
+      if (isAvailable(out)) {
+        push(out, elems.next())
+        if (elems.hasNext) {
+          setOrAddEmitting(out, new EmittingIterator(out, elems, getHandler(out), andThen))
+        } else {
+          andThen()
+        }
+      } else {
+        setOrAddEmitting(out, new EmittingIterator(out, elems, getHandler(out), andThen))
+      }
+    }
+
+  /**
+   * Emit a sequence of elements through the given outlet, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal.
+   */
+  final protected def emit[T](out: Outlet[T], elems: Iterator[T]): Unit = emit(out, elems, DoNothing)
+
+  /**
+   * Emit an element through the given outlet and continue with the given thunk
+   * afterwards, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal (before invoking the `andThen` function).
+   */
+  final protected def emit[T](out: Outlet[T], elem: T, andThen: () ⇒ Unit): Unit =
+    if (isAvailable(out)) {
+      push(out, elem)
+      andThen()
+    } else {
+      setOrAddEmitting(out, new EmittingSingle(out, elem, getHandler(out), andThen))
+    }
+
+  /**
+   * Emit an element through the given outlet, suspending execution if necessary.
+   * This action replaces the [[OutHandler]] for the given outlet if suspension
+   * is needed and reinstalls the current handler upon receiving an `onPull()`
+   * signal.
+   */
+  final protected def emit[T](out: Outlet[T], elem: T): Unit = emit(out, elem, DoNothing)
+
+  /**
+   * Abort outstanding (suspended) emissions for the given outlet, if there are any.
+   * This will reinstall the replaced handler that was in effect before the `emit`
+   * call.
+   */
+  final protected def abortEmitting(out: Outlet[_]): Unit =
+    getHandler(out) match {
+      case e: Emitting[_] ⇒
+        setHandler(out, e.previous)
+      case _ ⇒
+    }
+
+  private def setOrAddEmitting[T](out: Outlet[T], next: Emitting[T]): Unit =
+    getHandler(out) match {
+      case e: Emitting[_] ⇒ e.asInstanceOf[Emitting[T]].addFollowUp(next)
+      case _              ⇒ setHandler(out, next)
+    }
+
+  private abstract class Emitting[T](protected val out: Outlet[T], val previous: OutHandler, andThen: () ⇒ Unit) extends OutHandler {
+    private var followUps: mutable.Queue[Emitting[T]] = null
+
+    protected def followUp(): Unit = {
+      setHandler(out, previous)
+      andThen()
+      if (followUps != null) {
+        val next = followUps.dequeue()
+        if (followUps.nonEmpty) next.followUps = followUps
+        setHandler(out, next)
+      }
+    }
+
+    def addFollowUp(e: Emitting[T]): Unit =
+      if (followUps == null) followUps = mutable.Queue(e)
+      else followUps.enqueue(e)
+
+    override def onDownstreamFinish(): Unit = previous.onDownstreamFinish()
+  }
+
+  private class EmittingSingle[T](_out: Outlet[T], elem: T, _previous: OutHandler, _andThen: () ⇒ Unit)
+    extends Emitting(_out, _previous, _andThen) {
+
+    override def onPull(): Unit = {
+      push(out, elem)
+      followUp()
+    }
+  }
+
+  private class EmittingIterator[T](_out: Outlet[T], elems: Iterator[T], _previous: OutHandler, _andThen: () ⇒ Unit)
+    extends Emitting(_out, _previous, _andThen) {
+
+    override def onPull(): Unit = {
+      push(out, elems.next())
+      if (!elems.hasNext) {
+        followUp()
+      }
+    }
+  }
+
+  /**
+   * Install a handler on the given inlet that emits received elements on the
+   * given outlet before pulling for more data. `doTerminate` controls whether
+   * completion or failure of the given inlet shall lead to stage termination or not.
+   */
+  final protected def passAlong[Out, In <: Out](from: Inlet[In], to: Outlet[Out], doTerminate: Boolean): Unit =
+    setHandler(from, new InHandler {
+      override def onPush(): Unit = {
+        val elem = grab(from)
+        emit(to, elem, () ⇒ pull(from))
+      }
+      override def onUpstreamFinish(): Unit = if (doTerminate) super.onUpstreamFinish()
+      override def onUpstreamFailure(ex: Throwable): Unit = if (doTerminate) super.onUpstreamFailure(ex)
+    })
 
   /**
    * Obtain a callback object that can be used asynchronously to re-enter the

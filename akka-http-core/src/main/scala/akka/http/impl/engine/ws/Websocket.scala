@@ -120,38 +120,20 @@ private[http] object Websocket {
       }
     }
 
-    /**
-     * Distributes output from the FrameHandler into bypass and userFlow.
-     */
-    object BypassRouter
-      extends FlexiRoute[Either[BypassEvent, MessagePart], FanOutShape2[Either[BypassEvent, MessagePart], BypassEvent, MessagePart]](new FanOutShape2("bypassRouter"), Attributes.name("bypassRouter")) {
-      def createRouteLogic(s: FanOutShape2[Either[BypassEvent, MessagePart], BypassEvent, MessagePart]): RouteLogic[Either[BypassEvent, MessagePart]] =
-        new RouteLogic[Either[BypassEvent, MessagePart]] {
-          def initialState: State[_] = State(DemandFromAny(s)) { (ctx, out, ev) ⇒
-            ev match {
-              case Left(_) ⇒
-                State(DemandFrom(s.out0)) { (ctx, _, ev) ⇒ // FIXME: #17004
-                  ctx.emit(s.out0)(ev.left.get)
-                  initialState
-                }
-              case Right(_) ⇒
-                State(DemandFrom(s.out1)) { (ctx, _, ev) ⇒
-                  ctx.emit(s.out1)(ev.right.get)
-                  initialState
-                }
-            }
-          }
+    def prepareMessages: Flow[MessagePart, Message, Unit] =
+      Flow[MessagePart]
+        .transform(() ⇒ new PrepareForUserHandler)
+        .splitWhen(_.isMessageEnd) // FIXME using splitAfter from #16885 would simplify protocol a lot
+        .map(_.collect {
+          case m: MessageDataPart ⇒ m
+        })
+        .via(collectMessage)
+        .named("ws-prepare-messages")
 
-          override def initialCompletionHandling: CompletionHandling = super.initialCompletionHandling.copy(
-            onDownstreamFinish = { (ctx, out) ⇒
-              if (out == s.out0) ctx.finish()
-              SameState
-            })
-        }
-    }
-    /**
-     * Merges bypass, user flow and tick source for consumption in the FrameOutHandler.
-     */
+    def renderMessages: Flow[Message, FrameStart, Unit] =
+      MessageToFrameRenderer.create(serverSide)
+        .named("ws-render-messages")
+
     object BypassMerge extends FlexiMerge[AnyRef, FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]](new FanInShape3("bypassMerge"), Attributes.name("bypassMerge")) {
       def createMergeLogic(s: FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]): MergeLogic[AnyRef] =
         new MergeLogic[AnyRef] {
@@ -175,31 +157,15 @@ private[http] object Websocket {
         }
     }
 
-    def prepareMessages: Flow[MessagePart, Message, Unit] =
-      Flow[MessagePart]
-        .transform(() ⇒ new PrepareForUserHandler)
-        .splitWhen(_.isMessageEnd) // FIXME using splitAfter from #16885 would simplify protocol a lot
-        .map(_.collect {
-          case m: MessageDataPart ⇒ m
-        })
-        .via(collectMessage)
-        .named("ws-prepare-messages")
-
-    def renderMessages: Flow[Message, FrameStart, Unit] =
-      MessageToFrameRenderer.create(serverSide)
-        .named("ws-render-messages")
-
     BidiFlow() { implicit b ⇒
       import FlowGraph.Implicits._
 
-      val routePreparation = b.add(Flow[FrameHandler.Output].mapConcat(x ⇒ x :: x :: Nil))
-      val split = b.add(BypassRouter)
+      val split = b.add(bypassRouter)
       val tick = Source(closeTimeout, closeTimeout, Tick)
-      val merge = b.add(BypassMerge)
+      val merge = b.add(bypassMerge)
       val messagePreparation = b.add(prepareMessages)
-      val messageRendering = b.add(renderMessages.transform(() ⇒ new LiftCompletions))
-
-      routePreparation.outlet ~> split.in
+      val messageRendering = b.add(renderMessages.via(liftCompletions))
+      // val messageRendering = b.add(renderMessages.transform(() ⇒ new LiftCompletions))
 
       // user handler
       split.out1 ~> messagePreparation
@@ -212,11 +178,83 @@ private[http] object Websocket {
       tick ~> merge.in2
 
       BidiShape(
-        routePreparation.inlet,
+        split.in,
         messagePreparation.outlet,
         messageRendering.inlet,
         merge.out)
     }.named("ws-message-api")
+  }
+
+  private object bypassRouter extends GraphStage[FanOutShape2[Output, BypassEvent, MessagePart]] {
+    private val in = Inlet[Output]("in")
+    private val bypass = Outlet[BypassEvent]("bypass-out")
+    private val user = Outlet[MessagePart]("message-out")
+
+    val shape = new FanOutShape2(in, bypass, user)
+
+    def createLogic = new GraphStageLogic(shape) {
+
+      setHandler(in, new InHandler {
+        override def onPush(): Unit = {
+          grab(in) match {
+            case b: BypassEvent with MessagePart ⇒ emit(bypass, b, () ⇒ emit(user, b, () ⇒ pull(in)))
+            case b: BypassEvent                  ⇒ emit(bypass, b, () ⇒ pull(in))
+            case m: MessagePart                  ⇒ emit(user, m, () ⇒ pull(in))
+          }
+        }
+      })
+
+      setHandler(bypass, eagerTerminateOutput)
+      setHandler(user, ignoreTerminateOutput)
+
+      override def preStart(): Unit = {
+        super.preStart()
+        pull(in)
+      }
+    }
+  }
+
+  private object bypassMerge extends GraphStage[FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]] {
+    private val bypass = Inlet[BypassEvent]("bypass-in")
+    private val user = Inlet[AnyRef]("message-in")
+    private val tick = Inlet[Tick.type]("tick-in")
+    private val out = Outlet[AnyRef]("out")
+
+    val shape = new FanInShape3(bypass, user, tick, out)
+
+    def createLogic = new GraphStageLogic(shape) {
+
+      passAlong(bypass, out, doTerminate = true)
+      passAlong(user, out, doTerminate = false)
+      passAlong(tick, out, doTerminate = false)
+
+      setHandler(out, eagerTerminateOutput)
+
+      override def preStart(): Unit = {
+        super.preStart()
+        pull(bypass)
+        pull(user)
+        pull(tick)
+      }
+    }
+  }
+
+  private object liftCompletions extends GraphStage[FlowShape[FrameStart, AnyRef]] {
+    private val in = Inlet[FrameStart]("in")
+    private val out = Outlet[AnyRef]("out")
+
+    val shape = new FlowShape(in, out)
+
+    def createLogic = new GraphStageLogic(shape) {
+      setHandler(out, new OutHandler {
+        override def onPull(): Unit = pull(in)
+      })
+      setHandler(in, new InHandler {
+        override def onPush(): Unit = push(out, grab(in))
+        override def onUpstreamFinish(): Unit = emit(out, UserHandlerCompleted, () ⇒ completeStage())
+        override def onUpstreamFailure(ex: Throwable): Unit = emit(out, UserHandlerErredOut(ex), () ⇒ completeStage())
+      })
+    }
   }
 
   def stack(serverSide: Boolean = true,
