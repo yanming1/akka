@@ -3,6 +3,7 @@
  */
 package akka.remote.transport
 
+import java.util.concurrent.TimeoutException
 import akka.ConfigurationException
 import akka.actor.SupervisorStrategy.Stop
 import akka.actor._
@@ -327,6 +328,8 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
       startWith(WaitHandshake, d)
   }
 
+  initHandshakeTimer()
+
   when(Closed) {
 
     // Transport layer events for outbound associations
@@ -339,7 +342,6 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
       if (sendAssociate(wrappedHandle, localHandshakeInfo)) {
         failureDetector.heartbeat()
         initHeartbeatTimer()
-        initHandshakeTimer()
         goto(WaitHandshake) using OutboundUnderlyingAssociated(statusPromise, wrappedHandle)
 
       } else {
@@ -350,6 +352,12 @@ private[transport] class ProtocolStateActor(initialData: InitialProtocolStateDat
 
     case Event(DisassociateUnderlying(_), _) ⇒
       stop()
+
+    case Event(HandshakeTimer, OutboundUnassociated(_, statusPromise, _)) ⇒
+      val errMsg = "No response from remote for outbound association. Associate timed out after " +
+        s"[${settings.HandshakeTimeout.toMillis} ms]."
+      statusPromise.failure(new TimeoutException(errMsg))
+      stop(FSM.Failure(TimeoutReason(errMsg)))
 
     case _ ⇒ stay()
 
