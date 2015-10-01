@@ -63,12 +63,6 @@ abstract class GraphStage[S <: Shape] extends GraphStageWithMaterializedValue[S,
 
 private object TimerMessages {
   final case class Scheduled(timerKey: Any, timerId: Int, repeating: Boolean) extends DeadLetterSuppression
-
-  sealed trait Queued
-  final case class QueuedSchedule(timerKey: Any, initialDelay: FiniteDuration, interval: FiniteDuration) extends Queued
-  final case class QueuedScheduleOnce(timerKey: Any, delay: FiniteDuration) extends Queued
-  final case class QueuedCancelTimer(timerKey: Any) extends Queued
-
   final case class Timer(id: Int, task: Cancellable)
 }
 
@@ -142,7 +136,6 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
 
   private val keyToTimers = mutable.Map[Any, Timer]()
   private val timerIdGen = Iterator from 1
-  private var queuedTimerEvents = List.empty[Queued]
 
   private var _timerAsyncCallback: AsyncCallback[Scheduled] = _
   private def getTimerAsyncCallback: AsyncCallback[Scheduled] = {
@@ -685,16 +678,12 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
     timerKey: Any,
     initialDelay: FiniteDuration,
     interval: FiniteDuration): Unit = {
-    if (interpreter ne null) {
-      cancelTimer(timerKey)
-      val id = timerIdGen.next()
-      val task = interpreter.materializer.schedulePeriodically(initialDelay, interval, new Runnable {
-        def run() = getTimerAsyncCallback.invoke(Scheduled(timerKey, id, repeating = true))
-      })
-      keyToTimers(timerKey) = Timer(id, task)
-    } else {
-      queuedTimerEvents = QueuedSchedule(timerKey, initialDelay, interval) :: queuedTimerEvents
-    }
+    cancelTimer(timerKey)
+    val id = timerIdGen.next()
+    val task = interpreter.materializer.schedulePeriodically(initialDelay, interval, new Runnable {
+      def run() = getTimerAsyncCallback.invoke(Scheduled(timerKey, id, repeating = true))
+    })
+    keyToTimers(timerKey) = Timer(id, task)
   }
 
   /**
@@ -703,16 +692,12 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * adding the new timer.
    */
   final protected def scheduleOnce(timerKey: Any, delay: FiniteDuration): Unit = {
-    if (interpreter ne null) {
-      cancelTimer(timerKey)
-      val id = timerIdGen.next()
-      val task = interpreter.materializer.scheduleOnce(delay, new Runnable {
-        def run() = getTimerAsyncCallback.invoke(Scheduled(timerKey, id, repeating = false))
-      })
-      keyToTimers(timerKey) = Timer(id, task)
-    } else {
-      queuedTimerEvents = QueuedScheduleOnce(timerKey, delay) :: queuedTimerEvents
-    }
+    cancelTimer(timerKey)
+    val id = timerIdGen.next()
+    val task = interpreter.materializer.scheduleOnce(delay, new Runnable {
+      def run() = getTimerAsyncCallback.invoke(Scheduled(timerKey, id, repeating = false))
+    })
+    keyToTimers(timerKey) = Timer(id, task)
   }
 
   /**
@@ -740,12 +725,6 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
 
   // Internal hooks to avoid reliance on user calling super in preStart
   protected[stream] def beforePreStart(): Unit = {
-    queuedTimerEvents.reverse.foreach {
-      case QueuedSchedule(timerKey, delay, interval) ⇒ schedulePeriodicallyWithInitialDelay(timerKey, delay, interval)
-      case QueuedScheduleOnce(timerKey, delay)       ⇒ scheduleOnce(timerKey, delay)
-      case QueuedCancelTimer(timerKey)               ⇒ cancelTimer(timerKey)
-    }
-    queuedTimerEvents = Nil
   }
 
   // Internal hooks to avoid reliance on user calling super in postStop
