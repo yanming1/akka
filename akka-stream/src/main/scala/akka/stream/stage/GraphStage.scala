@@ -223,6 +223,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
   final protected def setHandler(in: Inlet[_], handler: InHandler): Unit = {
     handler.ownerStageLogic = this
     inHandlers(in.id) = handler
+    if (_interpreter != null) _interpreter.setHandler(inToConn(in.id), handler)
   }
 
   /**
@@ -238,6 +239,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
   final protected def setHandler(out: Outlet[_], handler: OutHandler): Unit = {
     handler.ownerStageLogic = this
     outHandlers(out.id) = handler
+    if (_interpreter != null) _interpreter.setHandler(outToConn(out.id), handler)
   }
 
   /**
@@ -247,13 +249,19 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
     outHandlers(out.id)
   }
 
+  private def getNonEmittingHandler(out: Outlet[_]): OutHandler =
+    getHandler(out) match {
+      case e: Emitting[_] ⇒ e.previous
+      case other          ⇒ other
+    }
+
   private def conn[T](in: Inlet[T]): Int = inToConn(in.id)
   private def conn[T](out: Outlet[T]): Int = outToConn(out.id)
 
   /**
    * Requests an element on the given port. Calling this method twice before an element arrived will fail.
    * There can only be one outstanding request at any given time. The method [[hasBeenPulled()]] can be used
-   * query whether pull is allowed to be called or not.
+   * query whether pull is allowed to be called or not. This method will also fail if the port is already closed.
    */
   final protected def pull[T](in: Inlet[T]): Unit = {
     if ((interpreter.portStates(conn(in)) & (InReady | InClosed)) == InReady) {
@@ -264,6 +272,14 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
       require(!hasBeenPulled(in), "Cannot pull port twice")
     }
   }
+
+  /**
+   * Requests an element on the given port unless the port is already closed.
+   * Calling this method twice before an element arrived will fail.
+   * There can only be one outstanding request at any given time. The method [[hasBeenPulled()]] can be used
+   * query whether pull is allowed to be called or not.
+   */
+  final protected def tryPull[T](in: Inlet[T]): Unit = if (!isClosed(in)) pull(in)
 
   /**
    * Requests to stop receiving events from a given input port. Cancelling clears any ungrabbed elements from the port.
@@ -513,12 +529,12 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
       if (isAvailable(out)) {
         push(out, elems.next())
         if (elems.hasNext) {
-          setOrAddEmitting(out, new EmittingIterator(out, elems, getHandler(out), andThen))
+          setOrAddEmitting(out, new EmittingIterator(out, elems, getNonEmittingHandler(out), andThen))
         } else {
           andThen()
         }
       } else {
-        setOrAddEmitting(out, new EmittingIterator(out, elems, getHandler(out), andThen))
+        setOrAddEmitting(out, new EmittingIterator(out, elems, getNonEmittingHandler(out), andThen))
       }
     }
 
@@ -542,7 +558,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
       push(out, elem)
       andThen()
     } else {
-      setOrAddEmitting(out, new EmittingSingle(out, elem, getHandler(out), andThen))
+      setOrAddEmitting(out, new EmittingSingle(out, elem, getNonEmittingHandler(out), andThen))
     }
 
   /**
@@ -560,9 +576,8 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    */
   final protected def abortEmitting(out: Outlet[_]): Unit =
     getHandler(out) match {
-      case e: Emitting[_] ⇒
-        setHandler(out, e.previous)
-      case _ ⇒
+      case e: Emitting[_] ⇒ setHandler(out, e.previous)
+      case _              ⇒
     }
 
   private def setOrAddEmitting[T](out: Outlet[T], next: Emitting[T]): Unit =
@@ -620,7 +635,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
     setHandler(from, new InHandler {
       override def onPush(): Unit = {
         val elem = grab(from)
-        emit(to, elem, () ⇒ pull(from))
+        emit(to, elem, () ⇒ tryPull(from))
       }
       override def onUpstreamFinish(): Unit = if (doTerminate) super.onUpstreamFinish()
       override def onUpstreamFailure(ex: Throwable): Unit = if (doTerminate) super.onUpstreamFailure(ex)

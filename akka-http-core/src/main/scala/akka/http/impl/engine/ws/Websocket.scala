@@ -96,30 +96,6 @@ private[http] object Websocket {
                 })
         }
 
-    /** Lifts onComplete and onError into events to be processed in the FlexiMerge */
-    class LiftCompletions extends StatefulStage[FrameStart, AnyRef] {
-      def initial: StageState[FrameStart, AnyRef] = SteadyState
-
-      object SteadyState extends State {
-        def onPush(elem: FrameStart, ctx: Context[AnyRef]): SyncDirective = ctx.push(elem)
-      }
-      class CompleteWith(last: AnyRef) extends State {
-        def onPush(elem: FrameStart, ctx: Context[AnyRef]): SyncDirective =
-          ctx.fail(new IllegalStateException("No push expected"))
-
-        override def onPull(ctx: Context[AnyRef]): SyncDirective = ctx.pushAndFinish(last)
-      }
-
-      override def onUpstreamFinish(ctx: Context[AnyRef]): TerminationDirective = {
-        become(new CompleteWith(UserHandlerCompleted))
-        ctx.absorbTermination()
-      }
-      override def onUpstreamFailure(cause: Throwable, ctx: Context[AnyRef]): TerminationDirective = {
-        become(new CompleteWith(UserHandlerErredOut(cause)))
-        ctx.absorbTermination()
-      }
-    }
-
     def prepareMessages: Flow[MessagePart, Message, Unit] =
       Flow[MessagePart]
         .transform(() ⇒ new PrepareForUserHandler)
@@ -133,29 +109,6 @@ private[http] object Websocket {
     def renderMessages: Flow[Message, FrameStart, Unit] =
       MessageToFrameRenderer.create(serverSide)
         .named("ws-render-messages")
-
-    object BypassMerge extends FlexiMerge[AnyRef, FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]](new FanInShape3("bypassMerge"), Attributes.name("bypassMerge")) {
-      def createMergeLogic(s: FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]): MergeLogic[AnyRef] =
-        new MergeLogic[AnyRef] {
-          def initialState: State[_] = Idle
-
-          lazy val Idle = State[AnyRef](FlexiMerge.ReadAny(s.in0.asInstanceOf[Inlet[AnyRef]], s.in1.asInstanceOf[Inlet[AnyRef]], s.in2.asInstanceOf[Inlet[AnyRef]])) { (ctx, in, elem) ⇒
-            ctx.emit(elem)
-            SameState
-          }
-
-          override def initialCompletionHandling: CompletionHandling =
-            CompletionHandling(
-              onUpstreamFinish = { (ctx, in) ⇒
-                if (in == s.in0) ctx.finish()
-                SameState
-              },
-              onUpstreamFailure = { (ctx, in, cause) ⇒
-                if (in == s.in0) ctx.fail(cause)
-                SameState
-              })
-        }
-    }
 
     BidiFlow() { implicit b ⇒
       import FlowGraph.Implicits._

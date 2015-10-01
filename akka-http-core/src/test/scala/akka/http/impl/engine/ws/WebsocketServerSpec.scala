@@ -55,13 +55,9 @@ class WebsocketServerSpec extends FreeSpec with Matchers with WithMaterializerSp
               |
               |""".stripMarginWithNewline("\r\n")
 
-          expectWSFrame(Protocol.Opcode.Text,
-
-            ByteString("Message 1"), fin = true)
-          expectWSFrame(Protocol.
-            Opcode.Text, ByteString("Message 2"), fin = true)
-          expectWSFrame(
-            Protocol.Opcode.Text, ByteString("Message 3"), fin = true)
+          expectWSFrame(Protocol.Opcode.Text, ByteString("Message 1"), fin = true)
+          expectWSFrame(Protocol.Opcode.Text, ByteString("Message 2"), fin = true)
+          expectWSFrame(Protocol.Opcode.Text, ByteString("Message 3"), fin = true)
           expectWSFrame(Protocol.Opcode.Text, ByteString("Message 4"), fin = true)
           expectWSFrame(Protocol.Opcode.Text, ByteString("Message 5"), fin = true)
           expectWSCloseFrame(Protocol.CloseCodes.Regular)

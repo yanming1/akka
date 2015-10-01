@@ -306,11 +306,11 @@ private[http] object HttpServerBluePrint {
       }
   }
 
-  trait WebsocketSetup {
+  private trait WebsocketSetup {
     def websocketFlow: Flow[ByteString, ByteString, Any]
     def installHandler(handlerFlow: Flow[FrameEvent, FrameEvent, Any])(implicit mat: Materializer): Unit
   }
-  def websocketSetup: WebsocketSetup = {
+  private def websocketSetup: WebsocketSetup = {
     val sinkCell = new StreamUtils.OneTimeWriteCell[Publisher[FrameEvent]]
     val sourceCell = new StreamUtils.OneTimeWriteCell[Subscriber[FrameEvent]]
 
@@ -355,7 +355,7 @@ private[http] object HttpServerBluePrint {
         }
       }
   }
-  class WebsocketMerge(installHandler: Flow[FrameEvent, FrameEvent, Any] ⇒ Unit) extends FlexiMerge[ByteString, FanInShape2[ResponseRenderingOutput, ByteString, ByteString]](new FanInShape2("websocketMerge"), Attributes.name("websocketMerge")) {
+  private class WebsocketMerge(installHandler: Flow[FrameEvent, FrameEvent, Any] ⇒ Unit) extends FlexiMerge[ByteString, FanInShape2[ResponseRenderingOutput, ByteString, ByteString]](new FanInShape2("websocketMerge"), Attributes.name("websocketMerge")) {
     def createMergeLogic(s: FanInShape2[ResponseRenderingOutput, ByteString, ByteString]): MergeLogic[ByteString] =
       new MergeLogic[ByteString] {
         var websocketHandlerWasInstalled: Boolean = false

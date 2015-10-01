@@ -151,7 +151,7 @@ class GraphStageTimersSpec extends AkkaSpec {
         var tickCount = 0
 
         override def preStart(): Unit = schedulePeriodically("tick", 100.millis)
-        
+
         setHandler(out, new OutHandler {
           override def onPull() = () // Do nothing
           override def onDownstreamFinish() = completeStage()
