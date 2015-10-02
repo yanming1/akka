@@ -499,8 +499,8 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * is needed and reinstalls the current handler upon receiving an `onPull()`
    * signal (before invoking the `andThen` function).
    */
-  final protected def emit[T](out: Outlet[T], elems: immutable.Iterable[T], andThen: () ⇒ Unit): Unit =
-    emit(out, elems.iterator, andThen)
+  final protected def emitMultiple[T](out: Outlet[T], elems: immutable.Iterable[T], andThen: () ⇒ Unit): Unit =
+    emitMultiple(out, elems.iterator, andThen)
 
   /**
    * Emit a sequence of elements through the given outlet, suspending execution if necessary.
@@ -508,7 +508,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * is needed and reinstalls the current handler upon receiving an `onPull()`
    * signal.
    */
-  final protected def emit[T](out: Outlet[T], elems: immutable.Iterable[T]): Unit = emit(out, elems, DoNothing)
+  final protected def emitMultiple[T](out: Outlet[T], elems: immutable.Iterable[T]): Unit = emitMultiple(out, elems, DoNothing)
 
   /**
    * Emit a sequence of elements through the given outlet and continue with the given thunk
@@ -517,7 +517,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * is needed and reinstalls the current handler upon receiving an `onPull()`
    * signal (before invoking the `andThen` function).
    */
-  final protected def emit[T](out: Outlet[T], elems: Iterator[T], andThen: () ⇒ Unit): Unit =
+  final protected def emitMultiple[T](out: Outlet[T], elems: Iterator[T], andThen: () ⇒ Unit): Unit =
     if (elems.hasNext) {
       if (isAvailable(out)) {
         push(out, elems.next())
@@ -537,7 +537,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * is needed and reinstalls the current handler upon receiving an `onPull()`
    * signal.
    */
-  final protected def emit[T](out: Outlet[T], elems: Iterator[T]): Unit = emit(out, elems, DoNothing)
+  final protected def emitMultipe[T](out: Outlet[T], elems: Iterator[T]): Unit = emitMultiple(out, elems, DoNothing)
 
   /**
    * Emit an element through the given outlet and continue with the given thunk
@@ -624,14 +624,14 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * given outlet before pulling for more data. `doTerminate` controls whether
    * completion or failure of the given inlet shall lead to stage termination or not.
    */
-  final protected def passAlong[Out, In <: Out](from: Inlet[In], to: Outlet[Out], doTerminate: Boolean): Unit =
+  final protected def passAlong[Out, In <: Out](from: Inlet[In], to: Outlet[Out], doFinish: Boolean, doFail: Boolean): Unit =
     setHandler(from, new InHandler {
       override def onPush(): Unit = {
         val elem = grab(from)
         emit(to, elem, () ⇒ tryPull(from))
       }
-      override def onUpstreamFinish(): Unit = if (doTerminate) super.onUpstreamFinish()
-      override def onUpstreamFailure(ex: Throwable): Unit = if (doTerminate) super.onUpstreamFailure(ex)
+      override def onUpstreamFinish(): Unit = if (doFinish) super.onUpstreamFinish()
+      override def onUpstreamFailure(ex: Throwable): Unit = if (doFail) super.onUpstreamFailure(ex)
     })
 
   /**

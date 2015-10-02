@@ -13,8 +13,6 @@ import scala.concurrent.duration._
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.stream.stage._
-import FlexiRoute.{ DemandFrom, DemandFromAny, RouteLogic }
-import FlexiMerge.MergeLogic
 
 import akka.http.impl.util._
 import akka.http.scaladsl.model.ws._
@@ -177,9 +175,9 @@ private[http] object Websocket {
 
     def createLogic = new GraphStageLogic(shape) {
 
-      passAlong(bypass, out, doTerminate = true)
-      passAlong(user, out, doTerminate = false)
-      passAlong(tick, out, doTerminate = false)
+      passAlong(bypass, out, doFinish = true, doFail = true)
+      passAlong(user, out, doFinish = false, doFail = false)
+      passAlong(tick, out, doFinish = false, doFail = false)
 
       setHandler(out, eagerTerminateOutput)
 
