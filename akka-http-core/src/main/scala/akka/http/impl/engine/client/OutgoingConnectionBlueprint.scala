@@ -67,7 +67,6 @@ private[http] object OutgoingConnectionBlueprint {
 
     import ParserOutput._
     val responsePrep = Flow[List[ResponseOutput]]
-      .transform(StreamUtils.recover { case x: ResponseParsingError ⇒ x.error :: Nil }) // FIXME after #16565
       .mapConcat(identityFunc)
       .splitWhen(x ⇒ x.isInstanceOf[MessageStart] || x == MessageEnd)
       .via(headAndTailFlow)
@@ -214,6 +213,4 @@ private[http] object OutgoingConnectionBlueprint {
       override def preStart(): Unit = getNextMethod()
     }
   }
-
-  private class ResponseParsingError(val error: ErrorOutput) extends RuntimeException
 }

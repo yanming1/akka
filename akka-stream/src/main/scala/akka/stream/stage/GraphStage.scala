@@ -8,9 +8,9 @@ import akka.stream._
 import akka.stream.impl.StreamLayout.Module
 import akka.stream.impl.fusing.{ GraphModule, GraphInterpreter }
 import akka.stream.impl.fusing.GraphInterpreter.GraphAssembly
-
 import scala.collection.{ immutable, mutable }
 import scala.concurrent.duration.FiniteDuration
+import scala.collection.mutable.ArrayBuffer
 
 abstract class GraphStageWithMaterializedValue[S <: Shape, M] extends Graph[S, M] {
   def shape: S
@@ -409,17 +409,19 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    */
   final protected def isClosed[T](out: Outlet[T]): Boolean = (interpreter.portStates(conn(out)) & OutClosed) != 0
 
+  private val emptyArray = new ArrayBuffer[Any](0)
+
   /**
    * Read a number of elements from the given inlet and continue with the given function,
    * suspending execution if necessary. This action replaces the [[InHandler]]
    * for the given inlet if suspension is needed and reinstalls the current
    * handler upon receiving the last `onPush()` signal (before invoking the `andThen` function).
    */
-  final protected def readN[T](in: Inlet[T], n: Int)(andThen: Array[T] ⇒ Unit): Unit =
+  final protected def readN[T](in: Inlet[T], n: Int)(andThen: Seq[T] ⇒ Unit): Unit =
     if (n < 0) throw new IllegalArgumentException("cannot read negative number of elements")
-    else if (n == 0) andThen(new Array[Any](0).asInstanceOf[Array[T]])
+    else if (n == 0) andThen(emptyArray.asInstanceOf[Seq[T]])
     else {
-      val result = new Array[Any](n).asInstanceOf[Array[T]]
+      val result = new ArrayBuffer[T](n)
       var pos = 0
       if (isAvailable(in)) {
         val elem = grab(in)

@@ -78,7 +78,7 @@ public class GraphCyclesDocTest {
       final SinkShape<Integer> ignore = b.graph(Sink.ignore());
       
       b.from(src).viaFanIn(merge).via(printer).viaFanOut(bcast).to(ignore);
-                      b.to(merge)            .fromFanOut(bcast);
+                      b.to(merge.preferred()).fromFanOut(bcast);
     });
     //#unfair
   }
