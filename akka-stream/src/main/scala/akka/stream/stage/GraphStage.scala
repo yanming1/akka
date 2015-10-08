@@ -431,6 +431,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
         } else {
           pos = 1
           requireNotReading(in)
+          pull(in)
           setHandler(in, new Reading(in, n - 1, getHandler(in))(elem ⇒ {
             result(pos) = elem
             pos += 1
@@ -439,6 +440,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
         }
       } else {
         requireNotReading(in)
+        if (!hasBeenPulled(in)) pull(in)
         setHandler(in, new Reading(in, n, getHandler(in))(elem ⇒ {
           result(pos) = elem
           pos += 1
@@ -459,6 +461,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
       andThen(elem)
     } else {
       requireNotReading(in)
+      if (!hasBeenPulled(in)) pull(in)
       setHandler(in, new Reading(in, 1, getHandler(in))(andThen))
     }
   }
@@ -487,7 +490,10 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
     override def onPush(): Unit = {
       val elem = grab(in)
       if (n == 1) setHandler(in, previous)
-      else n -= 1
+      else {
+        n -= 1
+        pull(in)
+      }
       andThen(elem)
     }
     override def onUpstreamFinish(): Unit = previous.onUpstreamFinish()

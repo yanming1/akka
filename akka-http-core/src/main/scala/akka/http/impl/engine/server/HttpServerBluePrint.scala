@@ -5,7 +5,6 @@
 package akka.http.impl.engine.server
 
 import java.net.InetSocketAddress
-
 import akka.http.ServerSettings
 import akka.stream.io._
 import org.reactivestreams.{ Subscriber, Publisher }
@@ -27,6 +26,10 @@ import akka.http.impl.util._
 import akka.http.impl.engine.ws._
 import Websocket.SwitchToWebsocketToken
 import ParserOutput._
+import akka.stream.stage.GraphStage
+import akka.stream.stage.GraphStageLogic
+import akka.stream.stage.OutHandler
+import akka.stream.stage.InHandler
 
 /**
  * INTERNAL API
@@ -151,7 +154,7 @@ private[http] object HttpServerBluePrint {
         protocolRouter.out1 ~> websocket ~> protocolMerge.in1
 
         // protocol switching
-        val wsSwitchTokenMerge = b.add(new CloseIfFirstClosesMerge2[AnyRef]("protocolSwitchWsTokenMerge"))
+        val wsSwitchTokenMerge = b.add(WsSwitchTokenMerge)
         // feed back switch signal to the protocol router
         switchSource ~> wsSwitchTokenMerge.in1
         wsSwitchTokenMerge.out ~> protocolRouter.in
@@ -355,53 +358,67 @@ private[http] object HttpServerBluePrint {
         }
       }
   }
-  private class WebsocketMerge(installHandler: Flow[FrameEvent, FrameEvent, Any] ⇒ Unit) extends FlexiMerge[ByteString, FanInShape2[ResponseRenderingOutput, ByteString, ByteString]](new FanInShape2("websocketMerge"), Attributes.name("websocketMerge")) {
-    def createMergeLogic(s: FanInShape2[ResponseRenderingOutput, ByteString, ByteString]): MergeLogic[ByteString] =
-      new MergeLogic[ByteString] {
-        var websocketHandlerWasInstalled: Boolean = false
-        def httpIn = s.in0
-        def wsIn = s.in1
 
-        def initialState: State[_] = http
+  private class WebsocketMerge(installHandler: Flow[FrameEvent, FrameEvent, Any] ⇒ Unit) extends GraphStage[FanInShape2[ResponseRenderingOutput, ByteString, ByteString]] {
+    private val httpIn = Inlet[ResponseRenderingOutput]("httpIn")
+    private val wsIn = Inlet[ByteString]("wsIn")
+    private val out = Outlet[ByteString]("out")
 
-        def http: State[_] = State[ResponseRenderingOutput](Read(httpIn)) { (ctx, in, element) ⇒
-          element match {
-            case ResponseRenderingOutput.HttpData(bytes) ⇒
-              ctx.emit(bytes); SameState
-            case ResponseRenderingOutput.SwitchToWebsocket(responseBytes, handlerFlow) ⇒
-              ctx.emit(responseBytes)
-              installHandler(handlerFlow)
-              ctx.changeCompletionHandling(defaultCompletionHandling)
-              websocketHandlerWasInstalled = true
-              websocket
-          }
+    override val shape = new FanInShape2(httpIn, wsIn, out)
+
+    override def createLogic = new GraphStageLogic(shape) {
+      var websocketHandlerWasInstalled = false
+
+      setHandler(httpIn, new InHandler {
+        override def onPush(): Unit = ()
+        override def onUpstreamFinish(): Unit = if (!websocketHandlerWasInstalled) completeStage()
+      })
+      setHandler(wsIn, new InHandler {
+        override def onPush(): Unit = ()
+        override def onUpstreamFinish(): Unit = if (websocketHandlerWasInstalled) completeStage()
+      })
+      setHandler(out, new OutHandler {
+        override def onPull(): Unit =
+          if (websocketHandlerWasInstalled) read(wsIn)(transferBytes)
+          else read(httpIn)(transferHttpData)
+      })
+
+      val transferBytes = (b: ByteString) ⇒ push(out, b)
+      val transferHttpData = (r: ResponseRenderingOutput) ⇒ {
+        import ResponseRenderingOutput._
+        r match {
+          case HttpData(bytes) ⇒ push(out, bytes)
+          case SwitchToWebsocket(bytes, handler) ⇒
+            push(out, bytes)
+            installHandler(handler)
+            websocketHandlerWasInstalled = true
         }
+      }
 
-        def websocket: State[_] = State[ByteString](Read(wsIn)) { (ctx, in, bytes) ⇒
-          ctx.emit(bytes)
-          SameState
-        }
-
-        override def postStop(): Unit = if (!websocketHandlerWasInstalled) installDummyHandler()
+      override def postStop(): Unit = {
         // Install a dummy handler to make sure no processors leak because they have
         // never been subscribed to, see #17494 and #17551.
-        def installDummyHandler(): Unit = installHandler(Flow[FrameEvent])
+        if (!websocketHandlerWasInstalled) installHandler(Flow[FrameEvent])
       }
+    }
   }
-  /** A merge for two streams that just forwards all elements and closes the connection when the first input closes. */
-  class CloseIfFirstClosesMerge2[T](name: String) extends FlexiMerge[T, FanInShape2[T, T, T]](new FanInShape2(name), Attributes.name(name)) {
-    def createMergeLogic(s: FanInShape2[T, T, T]): MergeLogic[T] =
-      new MergeLogic[T] {
-        def initialState: State[T] = State[T](ReadAny(s.in0, s.in1)) {
-          case (ctx, port, in) ⇒ ctx.emit(in); SameState
-        }
 
-        override def initialCompletionHandling: CompletionHandling =
-          defaultCompletionHandling.copy(
-            onUpstreamFinish = { (ctx, in) ⇒
-              if (in == s.in0) ctx.finish()
-              SameState
-            })
+  /** A merge for two streams that just forwards all elements and closes the connection when the first input closes. */
+  private object WsSwitchTokenMerge extends GraphStage[FanInShape2[ByteString, Websocket.SwitchToWebsocketToken.type, AnyRef]] {
+    private val bytes = Inlet[ByteString]("bytes")
+    private val token = Inlet[Websocket.SwitchToWebsocketToken.type]("token")
+    private val out = Outlet[AnyRef]("out")
+
+    override val shape = new FanInShape2(bytes, token, out)
+
+    override def createLogic = new GraphStageLogic(shape) {
+      passAlong(bytes, out, doFinish = true, doFail = true)
+      passAlong(token, out, doFinish = false, doFail = true)
+      setHandler(out, eagerTerminateOutput)
+      override def preStart(): Unit = {
+        pull(bytes)
+        pull(token)
       }
+    }
   }
 }
