@@ -390,7 +390,7 @@ class Source[+Out, +Mat](delegate: scaladsl.Source[Out, Mat]) extends Graph[Sour
     def block(builder: FlowGraph.Builder[M],
               source: SourceShape[T]): Pair[Inlet[Out], Outlet[Pair[Out, T]]] = {
       val zip: FanInShape2[Out, T, Out Pair T] = builder.graph(Zip.create[Out, T])
-      builder.from(source).to(zip.in1)
+      builder.from(source).toInlet(zip.in1)
       new Pair(zip.in0, zip.out)
     }
     this.viaMat(Flow.factory.create(that, combinerToJava(block)), matF)
