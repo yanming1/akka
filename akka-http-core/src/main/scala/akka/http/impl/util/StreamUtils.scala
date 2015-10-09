@@ -8,7 +8,6 @@ import java.io.InputStream
 import java.util.concurrent.atomic.{ AtomicReference, AtomicBoolean }
 import akka.stream.impl.StreamLayout.Module
 import akka.stream.impl.{ SourceModule, SinkModule, PublisherSink }
-import akka.stream.scaladsl.FlexiMerge._
 import org.reactivestreams.{ Subscription, Processor, Subscriber, Publisher }
 import scala.collection.immutable
 import scala.concurrent.{ Promise, ExecutionContext, Future }

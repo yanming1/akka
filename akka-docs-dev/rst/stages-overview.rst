@@ -113,7 +113,7 @@ flatten (Concat)       the current consumed substream has an element available  
 Fan-in stages
 ^^^^^^^^^^^^^
 
-Most of these stages can be expressible as a ``FlexiMerge``. These stages take multiple streams as their input and provide
+Most of these stages can be expressible as a ``GraphStage``. These stages take multiple streams as their input and provide
 a single output combining the elements from all of the inputs in different ways.
 
 **The custom fan-in stages that can be built currently are limited**
@@ -131,7 +131,7 @@ concat                 the current stream has an element available; if the curre
 Fan-out stages
 ^^^^^^^^^^^^^^
 
-Most of these stages can be expressible as a ``FlexiRoute``. These have one input and multiple outputs. They might
+Most of these stages can be expressible as a ``GraphStage``. These have one input and multiple outputs. They might
 route the elements between different outputs, or emit elements on multiple outputs at the same time.
 
 **The custom fan-out stages that can be built currently are limited**
