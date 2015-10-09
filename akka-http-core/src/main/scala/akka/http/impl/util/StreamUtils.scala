@@ -246,18 +246,6 @@ private[http] object StreamUtils {
         throw new IllegalStateException("Value can be only set once.")
   }
 
-  /** A merge for two streams that just forwards all elements and closes the connection eagerly. */
-  class EagerCloseMerge2[T](name: String) extends FlexiMerge[T, FanInShape2[T, T, T]](new FanInShape2(name), Attributes.name(name)) {
-    def createMergeLogic(s: FanInShape2[T, T, T]): MergeLogic[T] =
-      new MergeLogic[T] {
-        def initialState: State[T] = State[T](ReadAny(s.in0, s.in1)) {
-          case (ctx, port, in) ⇒ ctx.emit(in); SameState
-        }
-
-        override def initialCompletionHandling: CompletionHandling = eagerClose
-      }
-  }
-
   // TODO: remove after #16394 is cleared
   def recover[A, B >: A](pf: PartialFunction[Throwable, B]): () ⇒ PushPullStage[A, B] = {
     val stage = new PushPullStage[A, B] {

@@ -102,7 +102,7 @@ private[http] object HttpServerBluePrint {
     // the bypassMerge.bypassInput. Otherwise the rising backpressure against the bypassFanout
     // would eventually prevent us from reading the remaining request chunks from the transportIn
     val bypass = Flow[RequestOutput].collect {
-      case r: RequestStart      => r
+      case r: RequestStart      ⇒ r
       case m: MessageStartError ⇒ m
     }
 
@@ -173,7 +173,7 @@ private[http] object HttpServerBluePrint {
   }
 
   class BypassMerge(settings: ServerSettings, log: LoggingAdapter)
-      extends GraphStage[FanInShape3[MessageStart with RequestOutput, OneHundredContinue.type, HttpResponse, ResponseRenderingContext]] {
+    extends GraphStage[FanInShape3[MessageStart with RequestOutput, OneHundredContinue.type, HttpResponse, ResponseRenderingContext]] {
     private val bypassInput = Inlet[MessageStart with RequestOutput]("bypassInput")
     private val oneHundredContinue = Inlet[OneHundredContinue.type]("100continue")
     private val applicationInput = Inlet[HttpResponse]("applicationInput")
@@ -282,7 +282,7 @@ private[http] object HttpServerBluePrint {
   case object OneHundredContinue
 
   final class ErrorsTo500ResponseRecovery(log: LoggingAdapter)
-      extends PushPullStage[ResponseRenderingContext, ResponseRenderingContext] {
+    extends PushPullStage[ResponseRenderingContext, ResponseRenderingContext] {
 
     import akka.stream.stage.Context
 
