@@ -174,8 +174,6 @@ class MergePreferred[T] private (val secondaryPorts: Int, val eagerClose: Boolea
       else tryPull(in)
     }
 
-    private def tryPull(in: Inlet[T]): Unit = if (!isClosed(in)) pull(in)
-
     // FIXME: slow iteration, try to make in a vector and inject into shape instead
     (0 until secondaryPorts).map(in).foreach { i ⇒
       setHandler(i, new InHandler {

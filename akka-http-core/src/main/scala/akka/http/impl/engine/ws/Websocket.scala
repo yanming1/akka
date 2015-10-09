@@ -111,11 +111,11 @@ private[http] object Websocket {
     BidiFlow() { implicit b ⇒
       import FlowGraph.Implicits._
 
-      val split = b.add(bypassRouter)
+      val split = b.add(BypassRouter)
       val tick = Source(closeTimeout, closeTimeout, Tick)
-      val merge = b.add(bypassMerge)
+      val merge = b.add(BypassMerge)
       val messagePreparation = b.add(prepareMessages)
-      val messageRendering = b.add(renderMessages.via(liftCompletions))
+      val messageRendering = b.add(renderMessages.via(LiftCompletions))
       // val messageRendering = b.add(renderMessages.transform(() ⇒ new LiftCompletions))
 
       // user handler
@@ -136,7 +136,7 @@ private[http] object Websocket {
     }.named("ws-message-api")
   }
 
-  private object bypassRouter extends GraphStage[FanOutShape2[Output, BypassEvent, MessagePart]] {
+  private object BypassRouter extends GraphStage[FanOutShape2[Output, BypassEvent, MessagePart]] {
     private val in = Inlet[Output]("in")
     private val bypass = Outlet[BypassEvent]("bypass-out")
     private val user = Outlet[MessagePart]("message-out")
@@ -166,7 +166,7 @@ private[http] object Websocket {
     }
   }
 
-  private object bypassMerge extends GraphStage[FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]] {
+  private object BypassMerge extends GraphStage[FanInShape3[BypassEvent, AnyRef, Tick.type, AnyRef]] {
     private val bypass = Inlet[BypassEvent]("bypass-in")
     private val user = Inlet[AnyRef]("message-in")
     private val tick = Inlet[Tick.type]("tick-in")
@@ -191,7 +191,7 @@ private[http] object Websocket {
     }
   }
 
-  private object liftCompletions extends GraphStage[FlowShape[FrameStart, AnyRef]] {
+  private object LiftCompletions extends GraphStage[FlowShape[FrameStart, AnyRef]] {
     private val in = Inlet[FrameStart]("in")
     private val out = Outlet[AnyRef]("out")
 

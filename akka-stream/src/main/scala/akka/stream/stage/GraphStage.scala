@@ -437,8 +437,6 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    */
   final protected def isClosed[T](out: Outlet[T]): Boolean = (interpreter.portStates(conn(out)) & OutClosed) != 0
 
-  private val emptyArray = new ArrayBuffer[Any](0)
-
   /**
    * Read a number of elements from the given inlet and continue with the given function,
    * suspending execution if necessary. This action replaces the [[InHandler]]
@@ -447,7 +445,7 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    */
   final protected def readN[T](in: Inlet[T], n: Int)(andThen: Seq[T] ⇒ Unit): Unit =
     if (n < 0) throw new IllegalArgumentException("cannot read negative number of elements")
-    else if (n == 0) andThen(emptyArray.asInstanceOf[Seq[T]])
+    else if (n == 0) andThen(Nil)
     else {
       val result = new ArrayBuffer[T](n)
       var pos = 0
