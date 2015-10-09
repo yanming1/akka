@@ -85,6 +85,15 @@ object GraphStageLogic {
   }
 
   /**
+   * Input handler that terminates the state upon receiving completion if the
+   * given condition holds at that time. The stage fails upon receiving a failure.
+   */
+  class ConditionalTerminateInput(predicate: () ⇒ Boolean) extends InHandler {
+    override def onPush(): Unit = ()
+    override def onUpstreamFinish(): Unit = if (predicate()) ownerStageLogic.completeStage()
+  }
+
+  /**
    * Input handler that does not terminate the stage upon receiving completion
    * nor failure.
    */
@@ -107,6 +116,15 @@ object GraphStageLogic {
   class IgnoreTerminateOutput extends OutHandler {
     override def onPull(): Unit = ()
     override def onDownstreamFinish(): Unit = ()
+  }
+
+  /**
+   * Output handler that terminates the state upon receiving completion if the
+   * given condition holds at that time. The stage fails upon receiving a failure.
+   */
+  class ConditionalTerminateOutput(predicate: () ⇒ Boolean) extends OutHandler {
+    override def onPull(): Unit = ()
+    override def onDownstreamFinish(): Unit = if (predicate()) ownerStageLogic.completeStage()
   }
 
   private object DoNothing extends (() ⇒ Unit) {
@@ -197,6 +215,11 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    */
   final protected def ignoreTerminateInput: InHandler = new IgnoreTerminateInput
   /**
+   * Input handler that terminates the state upon receiving completion if the
+   * given condition holds at that time. The stage fails upon receiving a failure.
+   */
+  final protected def conditionalTerminateInput(predicate: () ⇒ Boolean): InHandler = new ConditionalTerminateInput(predicate)
+  /**
    * Input handler that does not terminate the stage upon receiving completion
    * nor failure.
    */
@@ -209,6 +232,11 @@ abstract class GraphStageLogic private[stream] (inCount: Int, outCount: Int) {
    * Output handler that does not terminate the stage upon cancellation.
    */
   final protected def ignoreTerminateOutput: OutHandler = new IgnoreTerminateOutput
+  /**
+   * Output handler that terminates the state upon receiving completion if the
+   * given condition holds at that time. The stage fails upon receiving a failure.
+   */
+  final protected def conditionalTerminateOutput(predicate: () ⇒ Boolean): OutHandler = new ConditionalTerminateOutput(predicate)
 
   /**
    * Assigns callbacks for the events for an [[Inlet]]
