@@ -61,7 +61,7 @@ public class FlowParallelismDocTest {
       Flow.of(ScoopOfBatter.class).map(batter -> new Pancake());
 
     Flow<ScoopOfBatter, Pancake, BoxedUnit> pancakeChef =
-      Flow.factory().create(b -> {
+      Flow.fromGraph(FlowGraph.factory().create(b -> {
         final UniformFanInShape<Pancake, Pancake> mergePancakes =
           b.graph(Merge.create(2));
         final UniformFanOutShape<ScoopOfBatter, ScoopOfBatter> dispatchBatter =
@@ -75,8 +75,8 @@ public class FlowParallelismDocTest {
         // uses of "fryingPan" mean actually different stages in the graph.
         b.from(dispatchBatter.out(1)).via(fryingPan).to(mergePancakes.in(1));
 
-        return new Pair(dispatchBatter.in(), mergePancakes.out());
-      });
+        return new FlowShape<>(dispatchBatter.in(), mergePancakes.out());
+      }));
     //#parallelism
   }
 
@@ -84,7 +84,7 @@ public class FlowParallelismDocTest {
   public void parallelPipeline() {
     //#parallel-pipeline
     Flow<ScoopOfBatter, Pancake, BoxedUnit> pancakeChef =
-      Flow.factory().create(b -> {
+      Flow.fromGraph(FlowGraph.factory().create(b -> {
         final UniformFanInShape<Pancake, Pancake> mergePancakes =
           b.graph(Merge.create(2));
         final UniformFanOutShape<ScoopOfBatter, ScoopOfBatter> dispatchBatter =
@@ -102,8 +102,8 @@ public class FlowParallelismDocTest {
           .via(fryingPan2)
           .to(mergePancakes.in(1));
 
-        return new Pair(dispatchBatter.in(), mergePancakes.out());
-      });
+        return new FlowShape<>(dispatchBatter.in(), mergePancakes.out());
+      }));
     //#parallel-pipeline
   }
 
@@ -111,7 +111,7 @@ public class FlowParallelismDocTest {
   public void pipelinedParallel() {
     //#pipelined-parallel
     Flow<ScoopOfBatter, HalfCookedPancake, BoxedUnit> pancakeChefs1 =
-      Flow.factory().create(b -> {
+      Flow.fromGraph(FlowGraph.factory().create(b -> {
         final UniformFanInShape<HalfCookedPancake, HalfCookedPancake> mergeHalfCooked =
           b.graph(Merge.create(2));
         final UniformFanOutShape<ScoopOfBatter, ScoopOfBatter> dispatchBatter =
@@ -122,11 +122,11 @@ public class FlowParallelismDocTest {
         b.from(dispatchBatter.out(0)).via(fryingPan1).to(mergeHalfCooked.in(0));
         b.from(dispatchBatter.out(1)).via(fryingPan1).to(mergeHalfCooked.in(1));
 
-        return new Pair(dispatchBatter.in(), mergeHalfCooked.out());
-      });
+        return new FlowShape<>(dispatchBatter.in(), mergeHalfCooked.out());
+      }));
 
     Flow<HalfCookedPancake, Pancake, BoxedUnit> pancakeChefs2 =
-      Flow.factory().create(b -> {
+      Flow.fromGraph(FlowGraph.factory().create(b -> {
         final UniformFanInShape<Pancake, Pancake> mergePancakes =
           b.graph(Merge.create(2));
         final UniformFanOutShape<HalfCookedPancake, HalfCookedPancake> dispatchHalfCooked =
@@ -137,8 +137,8 @@ public class FlowParallelismDocTest {
         b.from(dispatchHalfCooked.out(0)).via(fryingPan2).to(mergePancakes.in(0));
         b.from(dispatchHalfCooked.out(1)).via(fryingPan2).to(mergePancakes.in(1));
 
-        return new Pair(dispatchHalfCooked.in(), mergePancakes.out());
-      });
+        return new FlowShape<>(dispatchHalfCooked.in(), mergePancakes.out());
+      }));
 
     Flow<ScoopOfBatter, Pancake, BoxedUnit> kitchen =
         pancakeChefs1.via(pancakeChefs2);

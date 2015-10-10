@@ -19,6 +19,7 @@ import akka.testkit.JavaTestKit;
 import akka.util.ByteString;
 import scala.concurrent.*;
 import scala.runtime.BoxedUnit;
+import scala.Option;
 
 public class CompositionDocTest {
 
@@ -101,7 +102,7 @@ public class CompositionDocTest {
   @Test
   public void complexGraph() throws Exception {
     //#complex-graph
-    FlowGraph.factory().closed(builder -> {
+    FlowGraph.factory().runnable(builder -> {
       final Outlet<Integer> A = builder.source(Source.single(0));
       final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
       final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
@@ -119,7 +120,7 @@ public class CompositionDocTest {
     //#complex-graph
 
     //#complex-graph-alt
-    FlowGraph.factory().closed(builder -> {
+    FlowGraph.factory().runnable(builder -> {
       final Outlet<Integer> A = builder.source(Source.single(0));
       final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
       final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
@@ -144,7 +145,7 @@ public class CompositionDocTest {
   public void partialGraph() throws Exception {
     //#partial-graph
     final Graph<FlowShape<Integer, Integer>, BoxedUnit> partial =
-      FlowGraph.factory().partial(builder -> {
+      FlowGraph.factory().create(builder -> {
         final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
         final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
         final UniformFanOutShape<Integer, Integer> E = builder.graph(Balance.create(2));
@@ -154,7 +155,7 @@ public class CompositionDocTest {
         builder.from(B).via(C).to(F);
         builder.from(B).via(builder.graph(Flow.of(Integer.class).map(i -> i + 1))).via(E).to(F);
 
-        return new FlowShape(B.in(), E.out(1));
+        return new FlowShape<Integer, Integer>(B.in(), E.out(1));
       });
 
     //#partial-graph
@@ -166,17 +167,18 @@ public class CompositionDocTest {
     //#partial-flow-dsl
     // Convert the partial graph of FlowShape to a Flow to get
     // access to the fluid DSL (for example to be able to call .filter())
-    final Flow<Integer, Integer, BoxedUnit> flow = Flow.wrap(partial);
+    final Flow<Integer, Integer, BoxedUnit> flow = Flow.fromGraph(partial);
 
     // Simple way to create a graph backed Source
-    final Source<Integer, BoxedUnit> source = Source.factory().create(builder -> {
-      final UniformFanInShape<Integer, Integer> merge = builder.graph(Merge.create(2));
-      builder.from(builder.source(Source.single(0))).to(merge);
-      builder.from(builder.source(Source.from(Arrays.asList(2, 3, 4)))).to(merge);
+    final Source<Integer, BoxedUnit> source = Source.fromGraph(
+      FlowGraph.factory().create(builder -> {
+        final UniformFanInShape<Integer, Integer> merge = builder.graph(Merge.create(2));
+        builder.from(builder.source(Source.single(0))).to(merge);
+        builder.from(builder.source(Source.from(Arrays.asList(2, 3, 4)))).to(merge);
 
-      // Exposing exactly one output port
-      return merge.out();
-    });
+        // Exposing exactly one output port
+        return new SourceShape<Integer>(merge.out());
+      }));
 
     // Building a Sink with a nested Flow, using the fluid DSL
     final Sink<Integer, BoxedUnit> sink = Flow.of(Integer.class)
@@ -195,7 +197,7 @@ public class CompositionDocTest {
     //#embed-closed
     final RunnableGraph<BoxedUnit> closed1 =
       Source.single(0).to(Sink.foreach(System.out::println));
-    final RunnableGraph<BoxedUnit> closed2 = FlowGraph.factory().closed(builder -> {
+    final RunnableGraph<BoxedUnit> closed2 = FlowGraph.factory().runnable(builder -> {
       final ClosedShape embeddedClosed = builder.graph(closed1);
     });
     //#embed-closed
@@ -203,21 +205,21 @@ public class CompositionDocTest {
 
   //#mat-combine-4a
   static class MyClass {
-    private Promise<BoxedUnit> p;
+    private Promise<Option<Integer>> p;
     private OutgoingConnection conn;
 
-    public MyClass(Promise<BoxedUnit> p, OutgoingConnection conn) {
+    public MyClass(Promise<Option<Integer>> p, OutgoingConnection conn) {
       this.p = p;
       this.conn = conn;
     }
 
     public void close() {
-      p.success(scala.runtime.BoxedUnit.UNIT);
+      p.success(Option.empty());
     }
   }
 
   static class Combiner {
-    static Future<MyClass> f(Promise<BoxedUnit> p,
+    static Future<MyClass> f(Promise<Option<Integer>> p,
         Pair<Future<OutgoingConnection>, Future<String>> rest) {
       return rest.first().map(new Mapper<OutgoingConnection, MyClass>() {
         public MyClass apply(OutgoingConnection c) {
@@ -232,13 +234,13 @@ public class CompositionDocTest {
   public void materializedValues() throws Exception {
     //#mat-combine-1
     // Materializes to Promise<BoxedUnit>                                     (red)
-    final Source<Integer, Promise<BoxedUnit>> source = Source.<Integer> lazyEmpty();
+    final Source<Integer, Promise<Option<Integer>>> source = Source.<Integer>maybe();
 
     // Materializes to BoxedUnit                                              (black)
     final Flow<Integer, Integer, BoxedUnit> flow1 = Flow.of(Integer.class).take(100);
 
-    // Materializes to Promise<BoxedUnit>                                     (red)
-    final Source<Integer, Promise<BoxedUnit>> nestedSource =
+    // Materializes to Promise<Option<>>                                     (red)
+    final Source<Integer, Promise<Option<Integer>>> nestedSource =
       source.viaMat(flow1, Keep.left()).named("nestedSource");
       //#mat-combine-1
 

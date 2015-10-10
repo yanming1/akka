@@ -53,7 +53,7 @@ public class FlowGraphDocTest {
     final Flow<Integer, Integer, BoxedUnit> f4 = Flow.of(Integer.class).map(elem -> elem + 30);
 
     final RunnableGraph<Future<List<String>>> result = FlowGraph.factory()
-      .closed(
+      .runnable(
         sink,
         (builder, out) -> {
           final UniformFanOutShape<Integer, Integer> bcast = builder.graph(Broadcast.create(2));
@@ -98,7 +98,7 @@ public class FlowGraphDocTest {
     final Flow<Integer, Integer, BoxedUnit> sharedDoubler = Flow.of(Integer.class).map(elem -> elem * 2);
 
     final RunnableGraph<Pair<Future<Integer>, Future<Integer>>> g = FlowGraph
-      .factory().closed(
+      .factory().runnable(
         topHeadSink, // import this sink into the graph
         bottomHeadSink, // and this as well
         Keep.both(),
@@ -122,22 +122,24 @@ public class FlowGraphDocTest {
       return a + b;
     });
 
-    final Flow<Future<Integer>, Integer, BoxedUnit> flatten = Flow.<Future<Integer>> empty()
+    final Flow<Future<Integer>, Integer, BoxedUnit> flatten = Flow.<Future<Integer>>create()
       .mapAsync(4, x -> {
         return x;
       });
 
-    final Flow<Integer, Integer, Future<Integer>> foldingFlow = Flow.factory().create(foldSink,
+    final Flow<Integer, Integer, Future<Integer>> foldingFlow = Flow.fromGraph(
+      FlowGraph.factory().create(foldSink,
       (b, fold) -> {
-        return new Pair<>(
+        return new FlowShape<>(
           fold.inlet(),
           b.from(b.materializedValue()).via(flatten).out());
-      });
+      }));
       //#flow-graph-matvalue
 
     //#flow-graph-matvalue-cycle
     // This cannot produce any value:
-    final Source<Integer, Future<Integer>> cyclicSource = Source.factory().create(foldSink,
+    final Source<Integer, Future<Integer>> cyclicSource = Source.fromGraph(
+      FlowGraph.factory().create(foldSink,
       (b, fold) -> {
         // - Fold cannot complete until its upstream mapAsync completes
         // - mapAsync cannot complete until the materialized Future produced by
@@ -145,8 +147,8 @@ public class FlowGraphDocTest {
         // As a result this Source will never emit anything, and its materialited
         // Future will never complete
         b.from(b.materializedValue()).via(flatten).to(fold);
-        return b.from(b.materializedValue()).via(flatten).out();
-      });
+        return new SourceShape<>(b.from(b.materializedValue()).via(flatten).out());
+      }));
 
     //#flow-graph-matvalue-cycle
   }

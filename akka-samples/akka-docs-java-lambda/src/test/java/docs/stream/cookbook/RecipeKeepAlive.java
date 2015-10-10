@@ -60,8 +60,8 @@ public class RecipeKeepAlive extends RecipeTest {
             TestPublisher.Probe<ByteString>,
             TestSubscriber.Probe<ByteString>
           > ticksDataRes =
-          FlowGraph.factory().closed3(ticks, data, sink,
-            (t, d, s) -> new Tuple3(t, d, s),
+          FlowGraph.factory().runnable3(ticks, data, sink,
+            (t, d, s) -> new Tuple3<>(t, d, s),
             (builder, t, d, s) -> {
               final int secondaryPorts = 1;
               final MergePreferredShape<ByteString> unfairMerge =

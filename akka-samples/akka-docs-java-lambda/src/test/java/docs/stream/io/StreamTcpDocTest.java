@@ -130,7 +130,7 @@ public class StreamTcpDocTest {
             .map(s -> ByteString.fromString(s));
 
       final Flow<ByteString, ByteString, BoxedUnit> serverLogic =
-          Flow.factory().create(builder -> {
+          Flow.fromGraph(FlowGraph.factory().create(builder -> {
             final UniformFanInShape<ByteString, ByteString> concat =
                 builder.graph(Concat.create());
             final FlowShape<ByteString, ByteString> echo = builder.graph(echoFlow);
@@ -139,8 +139,8 @@ public class StreamTcpDocTest {
               .from(welcome).to(concat)
               .from(echo).to(concat);
 
-            return new Pair<>(echo.inlet(), concat.out());
-      });
+            return new FlowShape<>(echo.inlet(), concat.out());
+      }));
 
       connection.handleWith(serverLogic, mat);
     }, mat);
