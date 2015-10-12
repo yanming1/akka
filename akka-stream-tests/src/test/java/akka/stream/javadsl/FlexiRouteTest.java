@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.HashSet;
 
+import akka.japi.function.Function3;
 import org.junit.ClassRule;
 import org.junit.Test;
 
@@ -44,22 +45,23 @@ public class FlexiRouteTest {
 
   @Test
   public void mustBuildSimpleFairRoute() throws Exception {
-    final Pair<Future<List<String>>, Future<List<String>>> result = FlowGraph
-        .factory()
-        .runnable(
-            out1,
-            out2,
-            Keep.<Future<List<String>>, Future<List<String>>> both(),
-            new Procedure3<Builder<Pair<Future<List<String>>, Future<List<String>>>>, SinkShape<List<String>>, SinkShape<List<String>>>() {
-              @Override
-              public void apply(Builder<Pair<Future<List<String>>, Future<List<String>>>> b, SinkShape<List<String>> o1,
-                  SinkShape<List<String>> o2) throws Exception {
-                final UniformFanOutShape<String, String> fair = b.graph(new Fair<String>());
-                b.edge(b.source(in), fair.in());
-                b.flow(fair.out(0), Flow.of(String.class).grouped(100), o1.inlet());
-                b.flow(fair.out(1), Flow.of(String.class).grouped(100), o2.inlet());
-              }
-            }).run(materializer);
+    final Pair<Future<List<String>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(
+        out1,
+        out2,
+        Keep.<Future<List<String>>, Future<List<String>>>both(),
+        new Function3<Builder<Pair<Future<List<String>>, Future<List<String>>>>, SinkShape<List<String>>, SinkShape<List<String>>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(Builder<Pair<Future<List<String>>, Future<List<String>>>> b, SinkShape<List<String>> o1,
+                            SinkShape<List<String>> o2) throws Exception {
+            final UniformFanOutShape<String, String> fair = b.graph(new Fair<String>());
+            b.edge(b.source(in), fair.in());
+            b.flow(fair.out(0), Flow.of(String.class).grouped(100), o1.inlet());
+            b.flow(fair.out(1), Flow.of(String.class).grouped(100), o2.inlet());
+
+          return ClosedShape.getInstance();
+        }
+        })).run(materializer);
 
     final List<String> result1 = Await.result(result.first(), Duration.apply(3, TimeUnit.SECONDS));
     final List<String> result2 = Await.result(result.second(), Duration.apply(3, TimeUnit.SECONDS));
@@ -74,22 +76,23 @@ public class FlexiRouteTest {
 
   @Test
   public void mustBuildSimpleRoundRobinRoute() throws Exception {
-    final Pair<Future<List<String>>, Future<List<String>>> result = FlowGraph
-        .factory()
-        .runnable(
-            out1,
-            out2,
-            Keep.<Future<List<String>>, Future<List<String>>> both(),
-            new Procedure3<Builder<Pair<Future<List<String>>, Future<List<String>>>>, SinkShape<List<String>>, SinkShape<List<String>>>() {
-              @Override
-              public void apply(Builder<Pair<Future<List<String>>, Future<List<String>>>> b, SinkShape<List<String>> o1,
-                  SinkShape<List<String>> o2) throws Exception {
-                final UniformFanOutShape<String, String> robin = b.graph(new StrictRoundRobin<String>());
-                b.edge(b.source(in), robin.in());
-                b.flow(robin.out(0), Flow.of(String.class).grouped(100), o1.inlet());
-                b.flow(robin.out(1), Flow.of(String.class).grouped(100), o2.inlet());
-              }
-            }).run(materializer);
+    final Pair<Future<List<String>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(
+        out1,
+        out2,
+        Keep.<Future<List<String>>, Future<List<String>>>both(),
+        new Function3<Builder<Pair<Future<List<String>>, Future<List<String>>>>, SinkShape<List<String>>, SinkShape<List<String>>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(Builder<Pair<Future<List<String>>, Future<List<String>>>> b, SinkShape<List<String>> o1,
+                                   SinkShape<List<String>> o2) throws Exception {
+            final UniformFanOutShape<String, String> robin = b.graph(new StrictRoundRobin<String>());
+            b.edge(b.source(in), robin.in());
+            b.flow(robin.out(0), Flow.of(String.class).grouped(100), o1.inlet());
+            b.flow(robin.out(1), Flow.of(String.class).grouped(100), o2.inlet());
+
+          return ClosedShape.getInstance();
+        }
+        })).run(materializer);
 
     final List<String> result1 = Await.result(result.first(), Duration.apply(3, TimeUnit.SECONDS));
     final List<String> result2 = Await.result(result.second(), Duration.apply(3, TimeUnit.SECONDS));
@@ -106,23 +109,24 @@ public class FlexiRouteTest {
     pairs.add(new Pair<Integer, String>(3, "C"));
     pairs.add(new Pair<Integer, String>(4, "D"));
     
-    final Pair<Future<List<Integer>>, Future<List<String>>> result = FlowGraph
-        .factory()
-        .runnable(
-            Sink.<List<Integer>> head(),
-            out2,
-            Keep.<Future<List<Integer>>, Future<List<String>>> both(),
-            new Procedure3<Builder<Pair<Future<List<Integer>>, Future<List<String>>> >, SinkShape<List<Integer>>, SinkShape<List<String>>>() {
-              @Override
-              public void apply(Builder<Pair<Future<List<Integer>>, Future<List<String>>> > b, SinkShape<List<Integer>> o1,
-                  SinkShape<List<String>> o2) throws Exception {
-                final FanOutShape2<Pair<Integer, String>, Integer, String> unzip = b.graph(new Unzip<Integer, String>());
-                final Outlet<Pair<Integer, String>> src = b.source(Source.from(pairs));
-                b.edge(src, unzip.in());
-                b.flow(unzip.out0(), Flow.of(Integer.class).grouped(100), o1.inlet());
-                b.flow(unzip.out1(), Flow.of(String.class).grouped(100), o2.inlet());
-              }
-            }).run(materializer);
+    final Pair<Future<List<Integer>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(
+          Sink.<List<Integer>>head(),
+          out2,
+          Keep.<Future<List<Integer>>, Future<List<String>>>both(),
+          new Function3<Builder<Pair<Future<List<Integer>>, Future<List<String>>>>, SinkShape<List<Integer>>, SinkShape<List<String>>, ClosedShape>() {
+            @Override
+            public ClosedShape apply(Builder<Pair<Future<List<Integer>>, Future<List<String>>>> b, SinkShape<List<Integer>> o1,
+                              SinkShape<List<String>> o2) throws Exception {
+              final FanOutShape2<Pair<Integer, String>, Integer, String> unzip = b.graph(new Unzip<Integer, String>());
+              final Outlet<Pair<Integer, String>> src = b.source(Source.from(pairs));
+              b.edge(src, unzip.in());
+              b.flow(unzip.out0(), Flow.of(Integer.class).grouped(100), o1.inlet());
+              b.flow(unzip.out1(), Flow.of(String.class).grouped(100), o2.inlet());
+
+              return ClosedShape.getInstance();
+            }
+          })).run(materializer);
 
     final List<Integer> result1 = Await.result(result.first(), Duration.apply(3, TimeUnit.SECONDS));
     final List<String> result2 = Await.result(result.second(), Duration.apply(3, TimeUnit.SECONDS));

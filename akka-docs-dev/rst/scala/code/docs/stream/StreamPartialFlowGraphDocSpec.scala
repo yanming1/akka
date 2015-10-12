@@ -31,7 +31,7 @@ class StreamPartialFlowGraphDocSpec extends AkkaSpec {
 
     val resultSink = Sink.head[Int]
 
-    val g = FlowGraph.runnable(resultSink) { implicit b =>
+    val g = RunnableGraph.fromGraph(FlowGraph.create(resultSink) { implicit b =>
       sink =>
         import FlowGraph.Implicits._
 
@@ -42,7 +42,8 @@ class StreamPartialFlowGraphDocSpec extends AkkaSpec {
         Source.single(2) ~> pm3.in(1)
         Source.single(3) ~> pm3.in(2)
         pm3.out ~> sink.inlet
-    }
+        ClosedShape
+    })
 
     val max: Future[Int] = g.run()
     Await.result(max, 300.millis) should equal(3)

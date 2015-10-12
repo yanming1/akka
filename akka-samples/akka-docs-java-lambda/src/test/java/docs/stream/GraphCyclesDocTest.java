@@ -46,13 +46,15 @@ public class GraphCyclesDocTest {
         return s;
       });
 
-    FlowGraph.factory().runnable(b -> {
+    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
       final UniformFanInShape<Integer, Integer> merge = b.graph(Merge.create(2));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
 
       b.from(source).via(merge).via(printFlow).via(bcast).to(Sink.ignore());
                     b.to(merge)              .from(bcast);
-    });
+
+      return ClosedShape.getInstance();
+    }));
     //#deadlocked
   }
 
@@ -65,13 +67,14 @@ public class GraphCyclesDocTest {
         });
     //#unfair
     // WARNING! The graph below stops consuming from "source" after a few steps
-    FlowGraph.factory().runnable(b -> {
+    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
       final MergePreferredShape<Integer> merge = b.graph(MergePreferred.create(1));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
 
       b.from(source).via(merge).via(printFlow).via(bcast).to(Sink.ignore());
                     b.to(merge.preferred())  .from(bcast);
-    });
+      return ClosedShape.getInstance();
+    }));
     //#unfair
   }
 
@@ -83,7 +86,7 @@ public class GraphCyclesDocTest {
           return s;
         });
     //#dropping
-    FlowGraph.factory().runnable(b -> {
+    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
       final UniformFanInShape<Integer, Integer> merge = b.graph(Merge.create(2));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
       final FlowShape<Integer, Integer> droppyFlow = b.graph(
@@ -91,7 +94,8 @@ public class GraphCyclesDocTest {
 
       b.from(source).via(merge).via(printFlow).via(bcast).to(Sink.ignore());
                    b.to(merge).via(droppyFlow).from(bcast);
-    });
+      return ClosedShape.getInstance();
+    }));
     //#dropping
   }
 
@@ -104,7 +108,7 @@ public class GraphCyclesDocTest {
         });
     //#zipping-dead
     // WARNING! The graph below never processes any elements
-    FlowGraph.factory().runnable(b -> {
+    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
       final FanInShape2<Integer, Integer, Integer>
         zip = b.graph(ZipWith.create((Integer left, Integer right) -> left));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
@@ -112,7 +116,8 @@ public class GraphCyclesDocTest {
       b.from(source).to(zip.in0());
       b.from(zip.out()).via(printFlow).via(bcast).to(Sink.ignore());
         b.to(zip.in1())              .from(bcast);
-    });
+      return ClosedShape.getInstance();
+    }));
     //#zipping-dead
   }
 
@@ -124,7 +129,7 @@ public class GraphCyclesDocTest {
           return s;
         });
     //#zipping-live
-    FlowGraph.factory().runnable(b -> {
+    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
       final FanInShape2<Integer, Integer, Integer>
         zip = b.graph(ZipWith.create((Integer left, Integer right) -> left));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
@@ -134,7 +139,8 @@ public class GraphCyclesDocTest {
       b.from(zip.out()).via(printFlow).via(bcast).to(Sink.ignore());
         b.to(zip.in1()).via(concat).from(Source.single(1));
                        b.to(concat)  .from(bcast);
-    });
+      return ClosedShape.getInstance();
+    }));
     //#zipping-live
   }
 

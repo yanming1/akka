@@ -363,23 +363,25 @@ public class FlowTest extends StreamTest {
     final Iterable<String> input1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> input2 = Arrays.asList(1, 2, 3);
 
-    final Builder<BoxedUnit> b = FlowGraph.<BoxedUnit>builder();
-    final Outlet<String> in1 = b.source(Source.from(input1));
-    final Outlet<Integer> in2 = b.source(Source.from(input2));
-    final FanInShape2<String, Integer, Pair<String, Integer>> zip = b.graph(Zip.<String, Integer> create());
-    final Inlet<Pair<String, Integer>> out = b.sink(Sink
-        .foreach(new Procedure<Pair<String, Integer>>() {
-          @Override
-          public void apply(Pair<String, Integer> param) throws Exception {
-            probe.getRef().tell(param, ActorRef.noSender());
-          }
-        }));
-    
-    b.edge(in1, zip.in0());
-    b.edge(in2, zip.in1());
-    b.edge(zip.out(), out);
-    
-    b.run(materializer);
+    RunnableGraph.fromGraph(FlowGraph.factory().create(new Function<Builder<BoxedUnit>, ClosedShape>(){
+      public ClosedShape apply(Builder<BoxedUnit> b) {
+        final Outlet<String> in1 = b.source(Source.from(input1));
+        final Outlet<Integer> in2 = b.source(Source.from(input2));
+        final FanInShape2<String, Integer, Pair<String, Integer>> zip = b.graph(Zip.<String, Integer> create());
+        final Inlet<Pair<String, Integer>> out = b.sink(Sink
+          .foreach(new Procedure<Pair<String, Integer>>() {
+            @Override
+            public void apply(Pair<String, Integer> param) throws Exception {
+              probe.getRef().tell(param, ActorRef.noSender());
+            }
+          }));
+
+        b.edge(in1, zip.in0());
+        b.edge(in2, zip.in1());
+        b.edge(zip.out(), out);
+        return ClosedShape.getInstance();
+      }
+    })).run(materializer);
 
     List<Object> output = Arrays.asList(probe.receiveN(3));
     @SuppressWarnings("unchecked")

@@ -3,7 +3,7 @@
  */
 package akka.stream.scaladsl
 
-import akka.stream.{ SourceShape, ActorMaterializer, ActorMaterializerSettings }
+import akka.stream.{ ClosedShape, SourceShape, ActorMaterializer, ActorMaterializerSettings }
 import akka.stream.testkit._
 
 import scala.concurrent.Await
@@ -25,11 +25,12 @@ class GraphMatValueSpec extends AkkaSpec {
 
     "expose the materialized value as source" in {
       val sub = TestSubscriber.manualProbe[Int]()
-      val f = FlowGraph.runnable(foldSink) { implicit b ⇒
+      val f = RunnableGraph.fromGraph(FlowGraph.create(foldSink) { implicit b ⇒
         fold ⇒
           Source(1 to 10) ~> fold
           b.materializedValue.mapAsync(4)(identity) ~> Sink(sub)
-      }.run()
+          ClosedShape
+      }).run()
 
       val r1 = Await.result(f, 3.seconds)
       sub.expectSubscription().request(1)
@@ -41,7 +42,7 @@ class GraphMatValueSpec extends AkkaSpec {
     "expose the materialized value as source multiple times" in {
       val sub = TestSubscriber.manualProbe[Int]()
 
-      val f = FlowGraph.runnable(foldSink) { implicit b ⇒
+      val f = RunnableGraph.fromGraph(FlowGraph.create(foldSink) { implicit b ⇒
         fold ⇒
           val zip = b.add(ZipWith[Int, Int, Int](_ + _))
           Source(1 to 10) ~> fold
@@ -49,7 +50,8 @@ class GraphMatValueSpec extends AkkaSpec {
           b.materializedValue.mapAsync(4)(identity) ~> zip.in1
 
           zip.out ~> Sink(sub)
-      }.run()
+          ClosedShape
+      }).run()
 
       val r1 = Await.result(f, 3.seconds)
       sub.expectSubscription().request(1)

@@ -297,15 +297,19 @@ public class FlexiMergeDocTest {
     final Sink<Pair<Integer, String>, Future<Pair<Integer, String>>> head =
             Sink.<Pair<Integer, String>>head();
 
-    final Future<Pair<Integer, String>> future = FlowGraph.factory().runnable(head,
+    final Future<Pair<Integer, String>> future =
+      RunnableGraph.<Future<Pair<Integer, String>>>fromGraph(
+        FlowGraph.factory().create(head,
             (builder, headSink) -> {
               final FanInShape2<Integer, String, Pair<Integer, String>> zip =
                 builder.graph(new Zip<Integer, String>());
               builder.from(Source.single(1)).to(zip.in0());
               builder.from(Source.single("A")).to(zip.in1());
               builder.from(zip.out()).to(headSink);
-
-            }).run(mat);
+              return ClosedShape.getInstance();
+            }
+        )
+      ).run(mat);
     //#fleximerge-zip-connecting
 
     assertEquals(new Pair<>(1, "A"),
@@ -317,14 +321,17 @@ public class FlexiMergeDocTest {
     final Sink<Pair<Integer, String>, Future<Pair<Integer, String>>> head =
             Sink.<Pair<Integer, String>>head();
 
-    final Future<Pair<Integer, String>> future = FlowGraph.factory().runnable(head,
-            (builder, headSink) -> {
-              final FanInShape2<Integer, String, Pair<Integer, String>> zip = builder.graph(new Zip2<Integer, String>());
-              builder.from(Source.repeat(1)).to(zip.in0());
-              builder.from(Source.single("A")).to(zip.in1());
-              builder.from(zip.out()).to(headSink);
-
-            }).run(mat);
+    final Future<Pair<Integer, String>> future =
+      RunnableGraph.<Future<Pair<Integer, String>>>fromGraph(
+        FlowGraph.factory().create(head,
+          (builder, headSink) -> {
+            final FanInShape2<Integer, String, Pair<Integer, String>> zip = builder.graph(new Zip2<Integer, String>());
+            builder.from(Source.repeat(1)).to(zip.in0());
+            builder.from(Source.single("A")).to(zip.in1());
+            builder.from(zip.out()).to(headSink);
+            return ClosedShape.getInstance();
+          })
+      ).run(mat);
 
     assertEquals(new Pair<>(1, "A"),
             Await.result(future, FiniteDuration.create(3, TimeUnit.SECONDS)));
@@ -332,14 +339,16 @@ public class FlexiMergeDocTest {
 
   @Test
   public void demonstrateImportantWithBackup() {
-    FlowGraph.factory().runnable((builder) -> {
+    RunnableGraph.fromGraph(
+      FlowGraph.factory().create((builder) -> {
       final FanInShape3<Integer, Integer, Integer, Integer> importantWithBackups = builder.graph(new ImportantWithBackups<Integer>());
 
       builder.from(Source.single(1)).to(importantWithBackups.in0());
       builder.from(Source.single(2)).to(importantWithBackups.in1());
       builder.from(Source.<Integer>failed(new RuntimeException("Boom!"))).to(importantWithBackups.in2());
       builder.from(importantWithBackups.out()).to(Sink.ignore());
-    }).run(mat);
+      return ClosedShape.getInstance();
+    })).run(mat);
   }
 
 }

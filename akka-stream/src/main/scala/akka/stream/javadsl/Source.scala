@@ -275,13 +275,13 @@ class Source[+Out, +Mat](delegate: scaladsl.Source[Out, Mat]) extends Graph[Sour
    * Connect this [[Source]] to a [[Sink]], concatenating the processing steps of both.
    */
   def to[M](sink: Graph[SinkShape[Out], M]): javadsl.RunnableGraph[Mat] =
-    new RunnableGraphAdapter(delegate.to(sink))
+    RunnableGraph.fromGraph(delegate.to(sink))
 
   /**
    * Connect this [[Source]] to a [[Sink]], concatenating the processing steps of both.
    */
   def toMat[M, M2](sink: Graph[SinkShape[Out], M], combine: function.Function2[Mat, M, M2]): javadsl.RunnableGraph[M2] =
-    new RunnableGraphAdapter(delegate.toMat(sink)(combinerToScala(combine)))
+    RunnableGraph.fromGraph(delegate.toMat(sink)(combinerToScala(combine)))
 
   /**
    * Connect this `Source` to a `Sink` and run it. The returned value is the materialized value

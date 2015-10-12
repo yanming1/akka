@@ -6,7 +6,9 @@ package docs.stream.cookbook;
 import akka.actor.ActorSystem;
 import akka.stream.ActorMaterializer;
 import akka.stream.Materializer;
+import akka.stream.ClosedShape;
 import akka.stream.javadsl.*;
+import akka.stream.javadsl.RunnableGraph;
 import akka.stream.scaladsl.MergePreferred.MergePreferredShape;
 import akka.stream.testkit.TestPublisher;
 import akka.stream.testkit.TestSubscriber;
@@ -60,7 +62,11 @@ public class RecipeKeepAlive extends RecipeTest {
             TestPublisher.Probe<ByteString>,
             TestSubscriber.Probe<ByteString>
           > ticksDataRes =
-          FlowGraph.factory().runnable3(ticks, data, sink,
+          RunnableGraph.<Tuple3<
+            TestPublisher.Probe<Tick>,
+            TestPublisher.Probe<ByteString>,
+            TestSubscriber.Probe<ByteString>>>fromGraph(
+            FlowGraph.factory().create3(ticks, data, sink,
             (t, d, s) -> new Tuple3<>(t, d, s),
             (builder, t, d, s) -> {
               final int secondaryPorts = 1;
@@ -70,8 +76,9 @@ public class RecipeKeepAlive extends RecipeTest {
               builder.from(d).to(unfairMerge.preferred());
               builder.from(t).via(tickToKeepAlivePacket).to(unfairMerge.in(0));
               builder.from(unfairMerge.out()).to(s);
+              return ClosedShape.getInstance();
             }
-          ).run(mat);
+          )).run(mat);
         //#inject-keepalive
         //@formatter:on
 

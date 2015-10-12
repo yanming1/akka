@@ -53,7 +53,7 @@ class FlexiDocSpec extends AkkaSpec {
     //format: OFF
     val res =
     //#fleximerge-zip-connecting
-    FlowGraph.runnable(Sink.head[(Int, String)]) { implicit b =>
+    RunnableGraph.fromGraph(FlowGraph.create(Sink.head[(Int, String)]) { implicit b =>
       o =>
       import FlowGraph.Implicits._
 
@@ -62,7 +62,8 @@ class FlexiDocSpec extends AkkaSpec {
       Source.single(1)   ~> zip.left
       Source.single("1") ~> zip.right
                             zip.out ~> o.inlet
-    }
+        ClosedShape
+    })
     //#fleximerge-zip-connecting
     .run()
     //format: ON
@@ -96,7 +97,7 @@ class FlexiDocSpec extends AkkaSpec {
     }
     //#fleximerge-zip-states
 
-    val res = FlowGraph.runnable(Sink.head[(Int, String)]) { implicit b =>
+    val res = RunnableGraph.fromGraph(FlowGraph.create(Sink.head[(Int, String)]) { implicit b =>
       o =>
         import FlowGraph.Implicits._
 
@@ -105,7 +106,8 @@ class FlexiDocSpec extends AkkaSpec {
         Source(1 to 2) ~> zip.left
         Source((1 to 2).map(_.toString)) ~> zip.right
         zip.out ~> o.inlet
-    }.run()
+        ClosedShape
+    }).run()
 
     Await.result(res, 300.millis) should equal((1, "1"))
   }
@@ -167,14 +169,15 @@ class FlexiDocSpec extends AkkaSpec {
     }
     //#fleximerge-completion
 
-    FlowGraph.runnable() { implicit b =>
+    RunnableGraph.fromGraph(FlowGraph.create() { implicit b =>
       import FlowGraph.Implicits._
       val importantWithBackups = b.add(new ImportantWithBackups[Int])
       Source.single(1) ~> importantWithBackups.important
       Source.single(2) ~> importantWithBackups.replica1
       Source.failed[Int](new Exception("Boom!") with NoStackTrace) ~> importantWithBackups.replica2
       importantWithBackups.out ~> Sink.ignore
-    }.run()
+      ClosedShape
+    }).run()
   }
 
   "flexi preferring merge" in {
@@ -278,14 +281,15 @@ class FlexiDocSpec extends AkkaSpec {
     }
     //#flexiroute-completion
 
-    FlowGraph.runnable() { implicit b =>
+    RunnableGraph.fromGraph(FlowGraph.create() { implicit b =>
       import FlowGraph.Implicits._
       val route = b.add(new ImportantRoute[Int])
       Source.single(1) ~> route.in
       route.important ~> Sink.ignore
       route.additional1 ~> Sink.ignore
       route.additional2 ~> Sink.ignore
-    }.run()
+      ClosedShape
+    }).run()
   }
 
 }

@@ -5,6 +5,7 @@ package docs.stream;
 
 import java.util.Arrays;
 
+import akka.stream.ClosedShape;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -102,25 +103,28 @@ public class CompositionDocTest {
   @Test
   public void complexGraph() throws Exception {
     //#complex-graph
-    FlowGraph.factory().runnable(builder -> {
-      final Outlet<Integer> A = builder.source(Source.single(0));
-      final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
-      final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
-      final FlowShape<Integer, Integer> D =
-        builder.graph(Flow.of(Integer.class).map(i -> i + 1));
-      final UniformFanOutShape<Integer, Integer> E = builder.graph(Balance.create(2));
-      final UniformFanInShape<Integer, Integer> F = builder.graph(Merge.create(2));
-      final Inlet<Integer> G = builder.sink(Sink.foreach(System.out::println));
+    RunnableGraph.fromGraph(
+      FlowGraph.factory().create(builder -> {
+        final Outlet<Integer> A = builder.source(Source.single(0));
+        final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
+        final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
+        final FlowShape<Integer, Integer> D =
+          builder.graph(Flow.of(Integer.class).map(i -> i + 1));
+        final UniformFanOutShape<Integer, Integer> E = builder.graph(Balance.create(2));
+        final UniformFanInShape<Integer, Integer> F = builder.graph(Merge.create(2));
+        final Inlet<Integer> G = builder.sink(Sink.foreach(System.out::println));
 
-      builder.from(F).to(C);
-      builder.from(A).via(B).via(C).to(F);
-      builder.from(B).via(D).via(E).to(F);
-      builder.from(E).to(G);
-    });
+        builder.from(F).to(C);
+        builder.from(A).via(B).via(C).to(F);
+        builder.from(B).via(D).via(E).to(F);
+        builder.from(E).to(G);
+        return ClosedShape.getInstance();
+      }));
     //#complex-graph
 
     //#complex-graph-alt
-    FlowGraph.factory().runnable(builder -> {
+    RunnableGraph.fromGraph(
+      FlowGraph.factory().create(builder -> {
       final Outlet<Integer> A = builder.source(Source.single(0));
       final UniformFanOutShape<Integer, Integer> B = builder.graph(Broadcast.create(2));
       final UniformFanInShape<Integer, Integer> C = builder.graph(Merge.create(2));
@@ -137,7 +141,8 @@ public class CompositionDocTest {
       builder.from(B.out(1)).via(D).to(E.in());
       builder.from(E.out(0)).to(F.in(1));
       builder.from(E.out(1)).to(G);
-    });
+      return ClosedShape.getInstance();
+    }));
     //#complex-graph-alt
   }
 
@@ -197,9 +202,12 @@ public class CompositionDocTest {
     //#embed-closed
     final RunnableGraph<BoxedUnit> closed1 =
       Source.single(0).to(Sink.foreach(System.out::println));
-    final RunnableGraph<BoxedUnit> closed2 = FlowGraph.factory().runnable(builder -> {
-      final ClosedShape embeddedClosed = builder.graph(closed1);
-    });
+    final RunnableGraph<BoxedUnit> closed2 =
+      RunnableGraph.fromGraph(
+        FlowGraph.factory().create(builder -> {
+          final ClosedShape embeddedClosed = builder.graph(closed1);
+          return embeddedClosed; // Could return ClosedShape.getInstance()
+    }));
     //#embed-closed
   }
 

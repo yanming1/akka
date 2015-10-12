@@ -77,7 +77,7 @@ class CompositionDocSpec extends AkkaSpec {
     // format: OFF
     //#complex-graph
     import FlowGraph.Implicits._
-    FlowGraph.runnable() { implicit builder =>
+    RunnableGraph.fromGraph(FlowGraph.create() { implicit builder =>
       val A: Outlet[Int]                  = builder.add(Source.single(0))
       val B: UniformFanOutShape[Int, Int] = builder.add(Broadcast[Int](2))
       val C: UniformFanInShape[Int, Int]  = builder.add(Merge[Int](2))
@@ -90,12 +90,14 @@ class CompositionDocSpec extends AkkaSpec {
       A  ~>  B  ~>  C     ~>      F
              B  ~>  D  ~>  E  ~>  F
                            E  ~>  G
-    }
+
+      ClosedShape
+    })
     //#complex-graph
 
     //#complex-graph-alt
     import FlowGraph.Implicits._
-    FlowGraph.runnable() { implicit builder =>
+    RunnableGraph.fromGraph(FlowGraph.create() { implicit builder =>
       val B = builder.add(Broadcast[Int](2))
       val C = builder.add(Merge[Int](2))
       val E = builder.add(Balance[Int](2))
@@ -106,7 +108,8 @@ class CompositionDocSpec extends AkkaSpec {
 
       B.out(1).map(_ + 1) ~> E.in; E.out(0) ~> F.in(1)
       E.out(1) ~> Sink.foreach(println)
-    }
+      ClosedShape
+    })
     //#complex-graph-alt
     // format: ON
   }
@@ -164,9 +167,11 @@ class CompositionDocSpec extends AkkaSpec {
   "closed graph" in {
     //#embed-closed
     val closed1 = Source.single(0).to(Sink.foreach(println))
-    val closed2 = FlowGraph.runnable() { implicit builder =>
+    val closed2 = RunnableGraph.fromGraph(FlowGraph.create() { implicit builder =>
       val embeddedClosed: ClosedShape = builder.add(closed1)
-    }
+      // …
+      embeddedClosed
+    })
     //#embed-closed
   }
 

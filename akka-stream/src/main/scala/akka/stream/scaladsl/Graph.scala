@@ -565,9 +565,8 @@ object FlowGraph extends GraphApply {
           .wire(flowCopy.shape.outlets.head, to)
     }
 
-    def addEdge[T](from: Outlet[T], to: Inlet[T]): Unit = {
+    def addEdge[T](from: Outlet[T], to: Inlet[T]): Unit =
       moduleInProgress = moduleInProgress.wire(from, to)
-    }
 
     /**
      * Import a graph into this module, performing a deep copy, discarding its
@@ -635,59 +634,6 @@ object FlowGraph extends GraphApply {
         moduleInProgress
           .compose(op)
           .wire(port, op.inPort)
-    }
-
-    private[stream] def buildRunnable[Mat](): RunnableGraph[Mat] = {
-      if (!moduleInProgress.isRunnable) {
-        throw new IllegalArgumentException(
-          "Cannot build the RunnableGraph because there are unconnected ports: " +
-            (moduleInProgress.outPorts ++ moduleInProgress.inPorts).mkString(", "))
-      }
-      new RunnableGraph(moduleInProgress.nest())
-    }
-
-    private[stream] def buildSource[T, Mat](outlet: Outlet[T]): Source[T, Mat] = {
-      if (moduleInProgress.isRunnable)
-        throw new IllegalArgumentException("Cannot build the Source since no ports remain open")
-      if (!moduleInProgress.isSource)
-        throw new IllegalArgumentException(
-          s"Cannot build Source with open inputs (${moduleInProgress.inPorts.mkString(",")}) and outputs (${moduleInProgress.outPorts.mkString(",")})")
-      if (moduleInProgress.outPorts.head != outlet)
-        throw new IllegalArgumentException(s"provided Outlet $outlet does not equal the module’s open Outlet ${moduleInProgress.outPorts.head}")
-      new Source(moduleInProgress.replaceShape(SourceShape(outlet)).nest())
-    }
-
-    private[stream] def buildFlow[In, Out, Mat](inlet: Inlet[In], outlet: Outlet[Out]): Flow[In, Out, Mat] = {
-      if (!moduleInProgress.isFlow)
-        throw new IllegalArgumentException(
-          s"Cannot build Flow with open inputs (${moduleInProgress.inPorts.mkString(",")}) and outputs (${moduleInProgress.outPorts.mkString(",")})")
-      if (moduleInProgress.outPorts.head != outlet)
-        throw new IllegalArgumentException(s"provided Outlet $outlet does not equal the module’s open Outlet ${moduleInProgress.outPorts.head}")
-      if (moduleInProgress.inPorts.head != inlet)
-        throw new IllegalArgumentException(s"provided Inlet $inlet does not equal the module’s open Inlet ${moduleInProgress.inPorts.head}")
-      new Flow(moduleInProgress.replaceShape(FlowShape(inlet, outlet)).nest())
-    }
-
-    private[stream] def buildBidiFlow[I1, O1, I2, O2, Mat](shape: BidiShape[I1, O1, I2, O2]): BidiFlow[I1, O1, I2, O2, Mat] = {
-      if (!moduleInProgress.isBidiFlow)
-        throw new IllegalArgumentException(
-          s"Cannot build BidiFlow with open inputs (${moduleInProgress.inPorts.mkString(",")}) and outputs (${moduleInProgress.outPorts.mkString(",")})")
-      if (moduleInProgress.outPorts.toSet != shape.outlets.toSet)
-        throw new IllegalArgumentException(s"provided Outlets [${shape.outlets.mkString(",")}] does not equal the module’s open Outlets [${moduleInProgress.outPorts.mkString(",")}]")
-      if (moduleInProgress.inPorts.toSet != shape.inlets.toSet)
-        throw new IllegalArgumentException(s"provided Inlets [${shape.inlets.mkString(",")}] does not equal the module’s open Inlets [${moduleInProgress.inPorts.mkString(",")}]")
-      new BidiFlow(moduleInProgress.replaceShape(shape).nest())
-    }
-
-    private[stream] def buildSink[T, Mat](inlet: Inlet[T]): Sink[T, Mat] = {
-      if (moduleInProgress.isRunnable)
-        throw new IllegalArgumentException("Cannot build the Sink since no ports remain open")
-      if (!moduleInProgress.isSink)
-        throw new IllegalArgumentException(
-          s"Cannot build Sink with open inputs (${moduleInProgress.inPorts.mkString(",")}) and outputs (${moduleInProgress.outPorts.mkString(",")})")
-      if (moduleInProgress.inPorts.head != inlet)
-        throw new IllegalArgumentException(s"provided Inlet $inlet does not equal the module’s open Inlet ${moduleInProgress.inPorts.head}")
-      new Sink(moduleInProgress.replaceShape(SinkShape(inlet)).nest())
     }
 
     private[stream] def module: Module = moduleInProgress

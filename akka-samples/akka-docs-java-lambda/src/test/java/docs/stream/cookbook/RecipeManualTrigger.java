@@ -8,6 +8,7 @@ import akka.japi.Pair;
 import akka.stream.ActorMaterializer;
 import akka.stream.FanInShape2;
 import akka.stream.Materializer;
+import akka.stream.ClosedShape;
 import akka.stream.javadsl.*;
 import akka.stream.javadsl.ZipWith;
 import akka.stream.testkit.*;
@@ -58,15 +59,21 @@ public class RecipeManualTrigger extends RecipeTest {
           Flow.<Pair<Message, Trigger>> create().map(p -> p.first());
 
         final RunnableGraph<Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>> g =
-          FlowGraph.factory().runnable(triggerSource, messageSink,
-            (p, s) -> new Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>(p, s),
-            (builder, source, sink) -> {
-          final FanInShape2<Message, Trigger, Pair<Message, Trigger>> zip =
-            builder.graph(Zip.create());
-          builder.from(elements).to(zip.in0());
-          builder.from(source).to(zip.in1());
-          builder.from(zip.out()).via(takeMessage).to(sink);
-        });
+          RunnableGraph.<Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>>fromGraph(
+            FlowGraph.factory().create(
+              triggerSource,
+              messageSink,
+              (p, s) -> new Pair<>(p, s),
+              (builder, source, sink) -> {
+                final FanInShape2<Message, Trigger, Pair<Message, Trigger>> zip =
+                  builder.graph(Zip.create());
+                builder.from(elements).to(zip.in0());
+                builder.from(source).to(zip.in1());
+                builder.from(zip.out()).via(takeMessage).to(sink);
+                return ClosedShape.getInstance();
+              }
+            )
+          );
         //#manually-triggered-stream
 
         Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>> pubSub = g.run(mat);
@@ -105,15 +112,21 @@ public class RecipeManualTrigger extends RecipeTest {
 
         //#manually-triggered-stream-zipwith
         final RunnableGraph<Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>> g =
-          FlowGraph.factory().runnable(triggerSource, messageSink,
-            (p, s) -> new Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>(p, s),
-            (builder, source, sink) -> {
-          final FanInShape2<Message, Trigger, Message> zipWith =
-            builder.graph(ZipWith.create((msg, trigger) -> msg));
-          builder.from(elements).to(zipWith.in0());
-          builder.from(source).to(zipWith.in1());
-          builder.from(zipWith.out()).to(sink);
-        });
+          RunnableGraph.<Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>>>fromGraph(
+            FlowGraph.factory().create(
+              triggerSource,
+              messageSink,
+              (p, s) -> new Pair<>(p, s),
+              (builder, source, sink) -> {
+                final FanInShape2<Message, Trigger, Message> zipWith =
+                  builder.graph(ZipWith.create((msg, trigger) -> msg));
+                builder.from(elements).to(zipWith.in0());
+                builder.from(source).to(zipWith.in1());
+                builder.from(zipWith.out()).to(sink);
+                return ClosedShape.getInstance();
+              }
+            )
+          );
         //#manually-triggered-stream-zipwith
 
         Pair<TestPublisher.Probe<Trigger>, TestSubscriber.Probe<Message>> pubSub = g.run(mat);

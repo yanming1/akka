@@ -284,6 +284,17 @@ object Flow {
     fromGraph(FlowGraph.create(sink, source)(f) { implicit b ⇒ (in, out) ⇒ FlowShape(in.inlet, out.outlet) })
 }
 
+object RunnableGraph {
+  /**
+   * A graph with a closed shape is logically a runnable graph, this method makes
+   * it so also in type.
+   */
+  def fromGraph[Mat](g: Graph[ClosedShape, Mat]): RunnableGraph[Mat] =
+    g match {
+      case r: RunnableGraph[Mat] ⇒ r
+      case other                 ⇒ RunnableGraph(other.module)
+    }
+}
 /**
  * Flow with attached input and output, can be executed.
  */
@@ -306,7 +317,6 @@ final case class RunnableGraph[+Mat](private[stream] val module: StreamLayout.Mo
     new RunnableGraph(module.withAttributes(attr).nest())
 
   override def named(name: String): RunnableGraph[Mat] = withAttributes(Attributes.name(name))
-
 }
 
 /**

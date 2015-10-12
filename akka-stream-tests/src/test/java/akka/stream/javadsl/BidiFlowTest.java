@@ -125,13 +125,14 @@ public class BidiFlowTest extends StreamTest {
 
   @Test
   public void mustWorkInIsolation() throws Exception {
-    final Pair<Future<Long>, Future<String>> p = FlowGraph
+    final Pair<Future<Long>, Future<String>> p =
+      RunnableGraph.fromGraph(FlowGraph
         .factory()
-        .runnable(Sink.<Long> head(), Sink.<String> head(),
+        .create(Sink.<Long> head(), Sink.<String> head(),
             Keep.<Future<Long>, Future<String>> both(),
-            new Procedure3<Builder<Pair<Future<Long>, Future<String>>>, SinkShape<Long>, SinkShape<String>>() {
+            new Function3<Builder<Pair<Future<Long>, Future<String>>>, SinkShape<Long>, SinkShape<String>, ClosedShape>() {
               @Override
-              public void apply(Builder<Pair<Future<Long>, Future<String>>> b, SinkShape<Long> st,
+              public ClosedShape apply(Builder<Pair<Future<Long>, Future<String>>> b, SinkShape<Long> st,
                   SinkShape<String> sb) throws Exception {
                 final BidiShape<Integer, Long, ByteString, String> s = b
                     .graph(bidi);
@@ -139,8 +140,9 @@ public class BidiFlowTest extends StreamTest {
                 b.from(s.out1()).to(st);
                 b.from(Source.single(bytes)).to(s.in2());
                 b.from(s.out2()).to(sb);
+                return ClosedShape.getInstance();
               }
-            }).run(materializer);
+            })).run(materializer);
 
     final Long rt = Await.result(p.first(), oneSec);
     final String rb = Await.result(p.second(), oneSec);
@@ -200,9 +202,11 @@ public class BidiFlowTest extends StreamTest {
 
   @Test
   public void mustMaterializeToItsValue() throws Exception {
-    final Future<Integer> f = FlowGraph.factory().runnable(bidiMat, new Procedure2<Builder<Future<Integer> >, BidiShape<Integer, Long, ByteString, String>>() {
+    final Future<Integer> f = RunnableGraph.fromGraph(
+      FlowGraph.factory().create(bidiMat,
+        new Function2<Builder<Future<Integer> >, BidiShape<Integer, Long, ByteString, String>, ClosedShape>() {
       @Override
-      public void apply(Builder<Future<Integer>> b,
+      public ClosedShape apply(Builder<Future<Integer>> b,
           BidiShape<Integer, Long, ByteString, String> shape) throws Exception {
         final FlowShape<String, Integer> left = b.graph(Flow.of(String.class).map(
             new Function<String, Integer>() {
@@ -218,8 +222,10 @@ public class BidiFlowTest extends StreamTest {
             }));
         b.from(shape.out2()).via(left).to(shape.in1())
          .from(shape.out1()).via(right).to(shape.in2());
+
+        return ClosedShape.getInstance();
       }
-    }).run(materializer);
+    })).run(materializer);
     assertEquals((Integer) 42, Await.result(f, oneSec));
   }
 

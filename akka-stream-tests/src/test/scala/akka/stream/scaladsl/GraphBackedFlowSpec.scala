@@ -110,10 +110,11 @@ class GraphFlowSpec extends AkkaSpec {
           importFlow ⇒ FlowShape(importFlow.inlet, importFlow.outlet)
         })
 
-        FlowGraph.runnable() { implicit b ⇒
+        RunnableGraph.fromGraph(FlowGraph.create() { implicit b ⇒
           import FlowGraph.Implicits._
           Source(1 to 5) ~> flow ~> flow ~> Sink(probe)
-        }.run()
+          ClosedShape
+        }).run()
 
         validateProbe(probe, 5, Set(4, 8, 12, 16, 20))
       }
@@ -194,14 +195,15 @@ class GraphFlowSpec extends AkkaSpec {
             SourceShape(s.outlet.map(_ * 2).outlet)
         })
 
-        FlowGraph.runnable(source, source)(Keep.both) { implicit b ⇒
+        RunnableGraph.fromGraph(FlowGraph.create(source, source)(Keep.both) { implicit b ⇒
           (s1, s2) ⇒
             import FlowGraph.Implicits._
             val merge = b.add(Merge[Int](2))
             s1.outlet ~> merge.in(0)
             merge.out ~> Sink(probe)
             s2.outlet.map(_ * 10) ~> merge.in(1)
-        }.run()
+            ClosedShape
+        }).run()
 
         validateProbe(probe, 10, Set(2, 4, 6, 8, 10, 20, 40, 60, 80, 100))
       }
@@ -302,12 +304,13 @@ class GraphFlowSpec extends AkkaSpec {
             SinkShape(flow.inlet)
         })
 
-        val (m1, m2, m3) = FlowGraph.runnable(source, flow, sink)(Tuple3.apply) { implicit b ⇒
+        val (m1, m2, m3) = RunnableGraph.fromGraph(FlowGraph.create(source, flow, sink)(Tuple3.apply) { implicit b ⇒
           (src, f, snk) ⇒
             import FlowGraph.Implicits._
             src.outlet.map(_.toInt) ~> f.inlet
             f.outlet.map(_.toString) ~> snk.inlet
-        }.run()
+            ClosedShape
+        }).run()
 
         val subscriber = m1
         val publisher = m3
@@ -332,11 +335,12 @@ class GraphFlowSpec extends AkkaSpec {
             SinkShape(snk.inlet)
         })
 
-        val (m1, m2) = FlowGraph.runnable(source, sink)(Keep.both) { implicit b ⇒
+        val (m1, m2) = RunnableGraph.fromGraph(FlowGraph.create(source, sink)(Keep.both) { implicit b ⇒
           (src, snk) ⇒
             import FlowGraph.Implicits._
             src.outlet ~> snk.inlet
-        }.run()
+            ClosedShape
+        }).run()
 
         val subscriber = m1
         val publisher = m2

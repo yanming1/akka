@@ -20,7 +20,7 @@ object MaterializationBenchmark {
   }
 
   val graphWithJunctionsBuilder = (numOfJunctions: Int) =>
-    FlowGraph.runnable() { implicit b =>
+    RunnableGraph.fromGraph(FlowGraph.create() { implicit b =>
       import FlowGraph.Implicits._
 
       val broadcast = b.add(Broadcast[Unit](numOfJunctions))
@@ -34,7 +34,8 @@ object MaterializationBenchmark {
 
       Source.single(()) ~> broadcast
       outlet ~> Sink.ignore
-    }
+      ClosedShape
+    })
 
   val graphWithNestedImportsBuilder = (numOfNestedGraphs: Int) => {
     var flow: Graph[FlowShape[Unit, Unit], Unit] = Flow[Unit].map(identity)
@@ -45,16 +46,17 @@ object MaterializationBenchmark {
       }
     }
 
-    FlowGraph.runnable(flow) { implicit b ⇒
+    RunnableGraph.fromGraph(FlowGraph.create(flow) { implicit b ⇒
       flow ⇒
         import FlowGraph.Implicits._
         Source.single(()) ~> flow ~> Sink.ignore
-    }
+      ClosedShape
+    })
   }
 
   val graphWithImportedFlowBuilder = (numOfFlows: Int) => {
     val flow = Flow[Unit].map(identity)
-    FlowGraph.runnable() { b ⇒
+    RunnableGraph.fromGraph(FlowGraph.create() { b ⇒
       val source = b.add(Source.single(()))
       var outlet = source
       for (i <- 0 until numOfFlows) {
@@ -65,7 +67,8 @@ object MaterializationBenchmark {
 
       val sink = b.add(Sink.ignore)
       b.addEdge(outlet, sink)
-    }
+      ClosedShape
+    })
   }
 }
 

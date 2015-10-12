@@ -7,7 +7,7 @@ import akka.stream.testkit.AkkaSpec
 import akka.stream.testkit.Utils._
 import org.scalactic.ConversionCheckedTripleEquals
 import akka.util.ByteString
-import akka.stream.{ FlowShape, BidiShape, ActorMaterializer, Attributes }
+import akka.stream._
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.collection.immutable
@@ -41,13 +41,14 @@ class BidiFlowSpec extends AkkaSpec with ConversionCheckedTripleEquals {
   "A BidiFlow" must {
 
     "work top/bottom in isolation" in {
-      val (top, bottom) = FlowGraph.runnable(Sink.head[Long], Sink.head[String])(Keep.both) { implicit b ⇒
+      val (top, bottom) = RunnableGraph.fromGraph(FlowGraph.create(Sink.head[Long], Sink.head[String])(Keep.both) { implicit b ⇒
         (st, sb) ⇒
           val s = b.add(bidi)
 
           Source.single(1) ~> s.in1; s.out1 ~> st
           sb <~ s.out2; s.in2 <~ Source.single(bytes)
-      }.run()
+          ClosedShape
+      }).run()
 
       Await.result(top, 1.second) should ===(3)
       Await.result(bottom, 1.second) should ===(str)
@@ -79,10 +80,11 @@ class BidiFlowSpec extends AkkaSpec with ConversionCheckedTripleEquals {
     }
 
     "materialize to its value" in {
-      val f = FlowGraph.runnable(bidiMat) { implicit b ⇒
+      val f = RunnableGraph.fromGraph(FlowGraph.create(bidiMat) { implicit b ⇒
         bidi ⇒
           Flow[String].map(Integer.valueOf(_).toInt) <~> bidi <~> Flow[Long].map(x ⇒ ByteString(s"Hello $x"))
-      }.run()
+          ClosedShape
+      }).run()
       Await.result(f, 1.second) should ===(42)
     }
 

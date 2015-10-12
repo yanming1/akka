@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.HashSet;
 
+import akka.japi.function.Function2;
 import org.junit.ClassRule;
 import org.junit.Test;
 
@@ -44,94 +45,93 @@ public class FlexiMergeTest {
 
   @Test
   public void mustBuildSimpleFairMerge() throws Exception {
-    final Future<List<String>> all = FlowGraph
-        .factory()
-        .runnable(Sink.<List<String>> head(),
-            new Procedure2<Builder<Future<List<String>> >, SinkShape<List<String>>>() {
-              @Override
-              public void apply(Builder<Future<List<String>> > b, SinkShape<List<String>> sink)
-                  throws Exception {
-                final UniformFanInShape<String, String> merge = b.graph(new Fair<String>());
-                b.edge(b.source(in1), merge.in(0));
-                b.edge(b.source(in2), merge.in(1));
-                b.flow(merge.out(), Flow.of(String.class).grouped(10), sink.inlet());
-              }
-            }).run(materializer);
+    final Future<List<String>> all = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(Sink.<List<String>>head(),
+        new Function2<Builder<Future<List<String>>>, SinkShape<List<String>>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(Builder<Future<List<String>>> b, SinkShape<List<String>> sink)
+            throws Exception {
+            final UniformFanInShape<String, String> merge = b.graph(new Fair<String>());
+            b.edge(b.source(in1), merge.in(0));
+            b.edge(b.source(in2), merge.in(1));
+            b.flow(merge.out(), Flow.of(String.class).grouped(10), sink.inlet());
+            return ClosedShape.getInstance();
+          }
+        })).run(materializer);
 
     final List<String> result = Await.result(all, Duration.apply(3, TimeUnit.SECONDS));
-    assertEquals(
-        new HashSet<String>(Arrays.asList("a", "b", "c", "d", "e", "f")), 
-        new HashSet<String>(result));
+    assertEquals(new HashSet<String>(Arrays.asList("a", "b","c","d","e","f")), new HashSet<String>(result));
   }
-  
-  @Test
+
+    @Test
   public void mustBuildSimpleRoundRobinMerge() throws Exception {
-    final Future<List<String>> all = FlowGraph
-        .factory()
-        .runnable(Sink.<List<String>> head(),
-            new Procedure2<Builder<Future<List<String>>>, SinkShape<List<String>>>() {
-              @Override
-              public void apply(Builder<Future<List<String>>> b, SinkShape<List<String>> sink)
-                  throws Exception {
-                final UniformFanInShape<String, String> merge = b.graph(new StrictRoundRobin<String>());
-                b.edge(b.source(in1), merge.in(0));
-                b.edge(b.source(in2), merge.in(1));
-                b.flow(merge.out(), Flow.of(String.class).grouped(10), sink.inlet());
-              }
-            }).run(materializer);
+    final Future<List<String>> all = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(Sink.<List<String>>head(),
+        new Function2<Builder<Future<List<String>>>, SinkShape<List<String>>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(Builder<Future<List<String>>> b, SinkShape<List<String>> sink)
+            throws Exception {
+            final UniformFanInShape<String, String> merge = b.graph(new StrictRoundRobin<String>());
+            b.edge(b.source(in1), merge.in(0));
+            b.edge(b.source(in2), merge.in(1));
+            b.flow(merge.out(), Flow.of(String.class).grouped(10), sink.inlet());
+            return ClosedShape.getInstance();
+          }
+        })).run(materializer);
 
     final List<String> result = Await.result(all, Duration.apply(3, TimeUnit.SECONDS));
-    assertEquals(Arrays.asList("a", "e", "b", "f", "c", "d"), result);
+    assertEquals(Arrays.asList("a", "e","b","f","c","d"), result);
   }
-  
-  @Test
+
+      @Test
   @SuppressWarnings("unchecked")
   public void mustBuildSimpleZip() throws Exception {
     final Source<Integer, BoxedUnit> inA = Source.from(Arrays.asList(1, 2, 3, 4));
     final Source<String, BoxedUnit> inB = Source.from(Arrays.asList("a", "b", "c"));
 
-    final Future<List<Pair<Integer, String>>> all = FlowGraph
-        .factory()
-        .runnable(Sink.<List<Pair<Integer, String>>>head(),
-                new Procedure2<Builder<Future<List<Pair<Integer, String>>>>, SinkShape<List<Pair<Integer, String>>>>() {
-                    @Override
-                    public void apply(Builder<Future<List<Pair<Integer, String>>>> b, SinkShape<List<Pair<Integer, String>>> sink)
-                            throws Exception {
-                        final FanInShape2<Integer, String, Pair<Integer, String>> zip = b.graph(new Zip<Integer, String>());
-                        b.edge(b.source(inA), zip.in0());
-                        b.edge(b.source(inB), zip.in1());
-                        b.flow(zip.out(), Flow.<Pair<Integer, String>>create().grouped(10), sink.inlet());
-                    }
-                }).run(materializer);
-    
-    final List<Pair<Integer, String>> result = Await.result(all, Duration.apply(3, TimeUnit.SECONDS));
-    assertEquals(
-        Arrays.asList(new Pair(1, "a"), new Pair(2, "b"), new Pair(3, "c")),
-        result);
-  }
+    final Future<List<Pair<Integer, String>>> all = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(Sink.<List<Pair<Integer, String>>>head(),
+        new Function2<Builder<Future<List<Pair<Integer, String>>>>, SinkShape<List<Pair<Integer, String>>>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(Builder<Future<List<Pair<Integer, String>>>> b, SinkShape<List<Pair<Integer, String>>> sink)
+            throws Exception {
+            final FanInShape2<Integer, String, Pair<Integer, String>> zip = b.graph(new Zip<Integer, String>());
+            b.edge(b.source(inA), zip.in0());
+            b.edge(b.source(inB), zip.in1());
+            b.flow(zip.out(), Flow.<Pair<Integer, String>>create().grouped(10), sink.inlet());
+            return ClosedShape.getInstance();
+          }
+        }
+      )).run(materializer);
 
-  @Test
+      final List<Pair<Integer, String>> result = Await.result(all, Duration.apply(3, TimeUnit.SECONDS));
+      assertEquals(Arrays.asList(new Pair(1, "a"), new Pair(2,"b"), new Pair(3,"c")),
+      result);
+    }
+
+        @Test
   @SuppressWarnings("unchecked")
   public void mustBuildTripleZipUsingReadAll() throws Exception {
     final Source<Long, BoxedUnit> inA = Source.from(Arrays.asList(1L, 2L, 3L, 4L));
     final Source<Integer, BoxedUnit> inB = Source.from(Arrays.asList(1, 2, 3, 4));
     final Source<String, BoxedUnit> inC = Source.from(Arrays.asList("a", "b", "c"));
 
-    final Future<List<Triple<Long, Integer, String>>> all = FlowGraph
-        .factory()
-        .runnable(Sink.<List<Triple<Long, Integer, String>>> head(),
-            new Procedure2<Builder<Future<List<Triple<Long, Integer, String>>>>, SinkShape<List<Triple<Long, Integer, String>>>>() {
+    final Future<List<Triple<Long, Integer, String>>> all = RunnableGraph.fromGraph(FlowGraph
+      .factory().create(Sink.<List<Triple<Long, Integer, String>>> head(),
+            new Function2<Builder<Future<List<Triple<Long, Integer, String>>>>, SinkShape<List<Triple<Long, Integer, String>>>, ClosedShape>() {
               @Override
-              public void apply(Builder<Future<List<Triple<Long, Integer, String>>>> b, SinkShape<List<Triple<Long, Integer, String>>> sink)
+              public ClosedShape apply(Builder<Future<List<Triple<Long, Integer, String>>>> b, SinkShape<List<Triple<Long, Integer, String>>> sink)
                   throws Exception {
                 final FanInShape3<Long, Integer, String, Triple<Long, Integer, String>> zip =
-                    b.graph(new TripleZip<Long, Integer, String>());
+                  b.graph(new TripleZip<Long, Integer, String>());
                 b.edge(b.source(inA), zip.in0());
                 b.edge(b.source(inB), zip.in1());
                 b.edge(b.source(inC), zip.in2());
-                b.flow(zip.out(), Flow.<Triple<Long, Integer, String>> create().grouped(10), sink.inlet());
+                b.flow(zip.out(), Flow.<Triple<Long, Integer, String>>create().grouped(10), sink.inlet());
+
+                return ClosedShape.getInstance();
               }
-            }).run(materializer);
+            })).run(materializer);
 
     final List<Triple<Long, Integer, String>> result = Await.result(all, Duration.apply(3, TimeUnit.SECONDS));
     assertEquals(

@@ -7,6 +7,7 @@ import akka.actor.*;
 import akka.dispatch.Mapper;
 import akka.japi.pf.ReceiveBuilder;
 import akka.pattern.Patterns;
+import akka.stream.ClosedShape;
 import akka.stream.ActorMaterializer;
 import akka.stream.Materializer;
 import akka.stream.UniformFanInShape;
@@ -196,13 +197,18 @@ public class RecipeGlobalRateLimit extends RecipeTest {
         final Source<String, BoxedUnit> source2 = Source.<String> fromIterator(() -> e2).via(limitGlobal(limiter, twoSeconds));
 
         final Sink<String, TestSubscriber.Probe<String>> sink = TestSink.probe(system);
-        final TestSubscriber.Probe<String> probe = FlowGraph.factory().runnable(sink, (builder, s) -> {
-          final int inputPorts = 2;
-          final UniformFanInShape<String, String> merge = builder.graph(Merge.create(inputPorts));
-          builder.from(source1).to(merge);
-          builder.from(source2).to(merge);
-          builder.from(merge).to(s);
-        }).run(mat);
+        final TestSubscriber.Probe<String> probe =
+          RunnableGraph.<TestSubscriber.Probe<String>>fromGraph(
+            FlowGraph.factory().create(sink, (builder, s) -> {
+              final int inputPorts = 2;
+              final UniformFanInShape<String, String> merge = builder.graph(Merge.create(inputPorts));
+              builder.from(source1).to(merge);
+              builder.from(source2).to(merge);
+              builder.from(merge).to(s);
+              return ClosedShape.getInstance();
+            }
+            )
+          ).run(mat);
 
         probe.expectSubscription().request(1000);
 

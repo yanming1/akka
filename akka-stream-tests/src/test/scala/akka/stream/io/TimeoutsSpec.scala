@@ -6,7 +6,7 @@ package akka.stream.io
 
 import java.util.concurrent.TimeoutException
 
-import akka.stream.ActorMaterializer
+import akka.stream.{ ClosedShape, ActorMaterializer }
 import akka.stream.scaladsl._
 import akka.stream.testkit.{ AkkaSpec, TestSubscriber, TestPublisher }
 import scala.concurrent.{ Future, Await }
@@ -172,14 +172,15 @@ class TimeoutsSpec extends AkkaSpec {
       val downWrite = TestPublisher.probe[Int]()
       val downRead = TestSubscriber.probe[String]()
 
-      FlowGraph.runnable() { implicit b ⇒
+      RunnableGraph.fromGraph(FlowGraph.create() { implicit b ⇒
         import FlowGraph.Implicits._
         val timeoutStage = b.add(Timeouts.idleTimeoutBidi[String, Int](2.seconds))
         Source(upWrite) ~> timeoutStage.in1;
         timeoutStage.out1 ~> Sink(downRead)
         Sink(upRead) <~ timeoutStage.out2;
         timeoutStage.in2 <~ Source(downWrite)
-      }.run()
+        ClosedShape
+      }).run()
 
       // Request enough for the whole test
       upRead.request(100)
@@ -219,14 +220,15 @@ class TimeoutsSpec extends AkkaSpec {
       val downWrite = TestPublisher.probe[Int]()
       val downRead = TestSubscriber.probe[String]()
 
-      FlowGraph.runnable() { implicit b ⇒
+      RunnableGraph.fromGraph(FlowGraph.create() { implicit b ⇒
         import FlowGraph.Implicits._
         val timeoutStage = b.add(Timeouts.idleTimeoutBidi[String, Int](2.seconds))
         Source(upWrite) ~> timeoutStage.in1;
         timeoutStage.out1 ~> Sink(downRead)
         Sink(upRead) <~ timeoutStage.out2;
         timeoutStage.in2 <~ Source(downWrite)
-      }.run()
+        ClosedShape
+      }).run()
 
       val te = TE("test")
 

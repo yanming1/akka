@@ -94,16 +94,21 @@ public class FlowGraphTest extends StreamTest {
     final Iterable<String> input1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> input2 = Arrays.asList(1, 2, 3);
 
-    final Builder<BoxedUnit> b = FlowGraph.builder();
-    final Source<String, BoxedUnit> in1 = Source.from(input1);
-    final Source<Integer, BoxedUnit> in2 = Source.from(input2);
-    final FanInShape2<String, Integer, Pair<String,Integer>> zip = b.graph(Zip.<String, Integer>create());
-    final Sink<Pair<String, Integer>, BoxedUnit> out = createSink(probe);
+    RunnableGraph.fromGraph( FlowGraph.factory().create(
+      new Function<Builder<BoxedUnit>,ClosedShape>() {
+        @Override
+        public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
+          final Source<String, BoxedUnit> in1 = Source.from(input1);
+          final Source<Integer, BoxedUnit> in2 = Source.from(input2);
+          final FanInShape2<String, Integer, Pair<String,Integer>> zip = b.graph(Zip.<String, Integer>create());
+          final Sink<Pair<String, Integer>, BoxedUnit> out = createSink(probe);
 
-    b.edge(b.source(in1), zip.in0());
-    b.edge(b.source(in2), zip.in1());
-    b.edge(zip.out(), b.sink(out));
-    b.run(materializer);
+          b.edge(b.source(in1), zip.in0());
+          b.edge(b.source(in2), zip.in1());
+          b.edge(zip.out(), b.sink(out));
+          return ClosedShape.getInstance();
+        }
+      })).run(materializer);
 
     List<Object> output = Arrays.asList(probe.receiveN(3));
     @SuppressWarnings("unchecked")
@@ -124,17 +129,22 @@ public class FlowGraphTest extends StreamTest {
     final Iterable<String> expected1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> expected2 = Arrays.asList(1, 2, 3);
 
-    final Builder<BoxedUnit> b = FlowGraph.builder();
-    final Outlet<Pair<String, Integer>> in = b.source(Source.from(input));
-    final FanOutShape2<Pair<String, Integer>, String, Integer> unzip = b.graph(Unzip.<String, Integer>create());
+    RunnableGraph.fromGraph(FlowGraph.factory().create(
+        new Function<Builder<BoxedUnit>, ClosedShape>() {
+          @Override
+          public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
+            final Outlet<Pair<String, Integer>> in = b.source(Source.from(input));
+            final FanOutShape2<Pair<String, Integer>, String, Integer> unzip = b.graph(Unzip.<String, Integer>create());
 
-    final Sink<String, BoxedUnit> out1 = createSink(probe1);
-    final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
+            final Sink<String, BoxedUnit> out1 = createSink(probe1);
+            final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
 
-    b.edge(in, unzip.in());
-    b.edge(unzip.out0(), b.sink(out1));
-    b.edge(unzip.out1(), b.sink(out2));
-    b.run(materializer);
+            b.edge(in, unzip.in());
+            b.edge(unzip.out0(), b.sink(out1));
+            b.edge(unzip.out1(), b.sink(out2));
+            return ClosedShape.getInstance();
+          }
+        })).run(materializer);
 
     List<Object> output1 = Arrays.asList(probe1.receiveN(3));
     List<Object> output2 = Arrays.asList(probe2.receiveN(3));
@@ -151,24 +161,31 @@ public class FlowGraphTest extends StreamTest {
     final JavaTestKit probe1 = new JavaTestKit(system);
     final JavaTestKit probe2 = new JavaTestKit(system);
 
-    final Builder<BoxedUnit> b = FlowGraph.builder();
-    final Source<Integer, BoxedUnit> in = Source.single(1);
+    RunnableGraph.fromGraph(FlowGraph.factory().create(
+      new Function<Builder<BoxedUnit>, ClosedShape>() {
+        @Override
+        public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
+          final Source<Integer, BoxedUnit> in = Source.single(1);
 
-    final FanOutShape2<Integer, String, Integer> unzip = b.graph(UnzipWith.create(
-      new Function<Integer, Pair<String, Integer>>() {
-        @Override public Pair<String, Integer> apply(Integer l) throws Exception {
-          return new Pair<String, Integer>(l + "!", l);
+          final FanOutShape2<Integer, String, Integer> unzip = b.graph(UnzipWith.create(
+              new Function<Integer, Pair<String, Integer>>() {
+                @Override
+                public Pair<String, Integer> apply(Integer l) throws Exception {
+                  return new Pair<String, Integer>(l + "!", l);
+                }
+              })
+          );
+
+          final Sink<String, BoxedUnit> out1 = createSink(probe1);
+          final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
+
+          b.edge(b.source(in), unzip.in());
+          b.edge(unzip.out0(), b.sink(out1));
+          b.edge(unzip.out1(), b.sink(out2));
+          return ClosedShape.getInstance();
         }
-      })
-    );
-
-    final Sink<String, BoxedUnit> out1 = createSink(probe1);
-    final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
-
-    b.edge(b.source(in), unzip.in());
-    b.edge(unzip.out0(), b.sink(out1));
-    b.edge(unzip.out1(), b.sink(out2));
-    b.run(materializer);
+      }
+    )).run(materializer);
 
     Duration d = Duration.create(300, TimeUnit.MILLISECONDS);
 
@@ -187,28 +204,34 @@ public class FlowGraphTest extends StreamTest {
     final JavaTestKit probe3 = new JavaTestKit(system);
     final JavaTestKit probe4 = new JavaTestKit(system);
 
-    final Builder<BoxedUnit> b = FlowGraph.builder();
-    final Source<Integer, BoxedUnit> in = Source.single(1);
+    RunnableGraph.fromGraph(FlowGraph.factory().create(
+      new Function<Builder<BoxedUnit>, ClosedShape>() {
+        @Override
+        public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
+          final Source<Integer, BoxedUnit> in = Source.single(1);
 
-    final FanOutShape4<Integer, String, Integer, String, Integer> unzip = b.graph(UnzipWith.create4(
-      new Function<Integer, Tuple4<String, Integer, String, Integer>>() {
-        @Override public Tuple4<String, Integer, String, Integer> apply(Integer l) throws Exception {
-          return new Tuple4<String, Integer, String, Integer>(l.toString(), l, l + "+" + l, l + l);
+          final FanOutShape4<Integer, String, Integer, String, Integer> unzip = b.graph(UnzipWith.create4(
+              new Function<Integer, Tuple4<String, Integer, String, Integer>>() {
+                @Override
+                public Tuple4<String, Integer, String, Integer> apply(Integer l) throws Exception {
+                  return new Tuple4<String, Integer, String, Integer>(l.toString(), l, l + "+" + l, l + l);
+                }
+              })
+          );
+
+          final Sink<String, BoxedUnit> out1 = createSink(probe1);
+          final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
+          final Sink<String, BoxedUnit> out3 = createSink(probe3);
+          final Sink<Integer, BoxedUnit> out4 = createSink(probe4);
+
+          b.edge(b.source(in), unzip.in());
+          b.edge(unzip.out0(), b.sink(out1));
+          b.edge(unzip.out1(), b.sink(out2));
+          b.edge(unzip.out2(), b.sink(out3));
+          b.edge(unzip.out3(), b.sink(out4));
+          return ClosedShape.getInstance();
         }
-      })
-    );
-
-    final Sink<String, BoxedUnit> out1 = createSink(probe1);
-    final Sink<Integer, BoxedUnit> out2 = createSink(probe2);
-    final Sink<String, BoxedUnit> out3 = createSink(probe3);
-    final Sink<Integer, BoxedUnit> out4 = createSink(probe4);
-
-    b.edge(b.source(in), unzip.in());
-    b.edge(unzip.out0(), b.sink(out1));
-    b.edge(unzip.out1(), b.sink(out2));
-    b.edge(unzip.out2(), b.sink(out3));
-    b.edge(unzip.out3(), b.sink(out4));
-    b.run(materializer);
+      })).run(materializer);
 
     Duration d = Duration.create(300, TimeUnit.MILLISECONDS);
 
@@ -235,15 +258,17 @@ public class FlowGraphTest extends StreamTest {
       }
     });
     
-    final Future<Integer> future = FlowGraph.factory().runnable(Sink.<Integer> head(), new Procedure2<Builder<Future<Integer> >, SinkShape<Integer>>() {
+    final Future<Integer> future = RunnableGraph.fromGraph(FlowGraph.factory().create(Sink.<Integer>head(),
+      new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
-      public void apply(Builder<Future<Integer> > b, SinkShape<Integer> out) throws Exception {
+      public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
         final FanInShape2<Integer, Integer, Integer> zip = b.graph(sumZip);
         b.edge(b.source(in1), zip.in0());
         b.edge(b.source(in2), zip.in1());
         b.edge(zip.out(), out.inlet());
+        return ClosedShape.getInstance();
       }
-    }).run(materializer);
+    })).run(materializer);
 
     final Integer result = Await.result(future, Duration.create(300, TimeUnit.MILLISECONDS));
     assertEquals(11, (int) result);
@@ -263,17 +288,20 @@ public class FlowGraphTest extends StreamTest {
               }
             });
 
-    final Future<Integer> future = FlowGraph.factory().runnable(Sink.<Integer> head(), new Procedure2<Builder<Future<Integer>>, SinkShape<Integer>>() {
+    final Future<Integer> future = RunnableGraph.fromGraph(
+      FlowGraph.factory().create(Sink.<Integer>head(),
+        new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
-      public void apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
+      public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
         final FanInShape4<Integer, Integer, Integer, Integer, Integer> zip = b.graph(sumZip);
         b.edge(b.source(in1), zip.in0());
         b.edge(b.source(in2), zip.in1());
         b.edge(b.source(in3), zip.in2());
         b.edge(b.source(in4), zip.in3());
         b.edge(zip.out(), out.inlet());
+        return ClosedShape.getInstance();
       }
-    }).run(materializer);
+    })).run(materializer);
 
     final Integer result = Await.result(future, Duration.create(300, TimeUnit.MILLISECONDS));
     assertEquals(1111, (int) result);
@@ -285,17 +313,19 @@ public class FlowGraphTest extends StreamTest {
     final Source<Integer, BoxedUnit> in1 = Source.single(1);
     final TestProbe probe = TestProbe.apply(system);
 
-    final Future<Integer> future = FlowGraph.factory().runnable(Sink.<Integer> head(), new Procedure2<Builder<Future<Integer>>, SinkShape<Integer>>() {
+    final Future<Integer> future = RunnableGraph.fromGraph(
+      FlowGraph.factory().create(Sink.<Integer> head(), new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
-      public void apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
+      public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
         b.from(Source.single(1)).to(out);
         b.from(b.materializedValue()).to(Sink.foreach(new Procedure<Future<Integer>>(){
           public void apply(Future<Integer> mat) throws Exception {
             Patterns.pipe(mat, system.dispatcher()).to(probe.ref());
           }
         }));
+        return ClosedShape.getInstance();
       }
-    }).run(materializer);
+    })).run(materializer);
 
     final Integer result = Await.result(future, Duration.create(300, TimeUnit.MILLISECONDS));
     assertEquals(1, (int) result);

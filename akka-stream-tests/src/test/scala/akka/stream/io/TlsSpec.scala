@@ -12,7 +12,7 @@ import scala.util.Random
 
 import akka.actor.ActorSystem
 import akka.pattern.{ after ⇒ later }
-import akka.stream.ActorMaterializer
+import akka.stream.{ ClosedShape, ActorMaterializer }
 import akka.stream.scaladsl._
 import akka.stream.stage._
 import akka.stream.testkit._
@@ -383,12 +383,13 @@ class TlsSpec extends AkkaSpec("akka.loglevel=INFO\nakka.actor.debug.receive=off
     "reliably cancel subscriptions when TransportIn fails early" in assertAllStagesStopped {
       val ex = new Exception("hello")
       val (sub, out1, out2) =
-        FlowGraph.runnable(Source.subscriber[SslTlsOutbound], Sink.head[ByteString], Sink.head[SslTlsInbound])((_, _, _)) { implicit b ⇒
+        RunnableGraph.fromGraph(FlowGraph.create(Source.subscriber[SslTlsOutbound], Sink.head[ByteString], Sink.head[SslTlsInbound])((_, _, _)) { implicit b ⇒
           (s, o1, o2) ⇒
             val tls = b.add(clientTls(EagerClose))
             s ~> tls.in1; tls.out1 ~> o1
             o2 <~ tls.out2; tls.in2 <~ Source.failed(ex)
-        }.run()
+            ClosedShape
+        }).run()
       the[Exception] thrownBy Await.result(out1, 1.second) should be(ex)
       the[Exception] thrownBy Await.result(out2, 1.second) should be(ex)
       Thread.sleep(500)
@@ -400,12 +401,13 @@ class TlsSpec extends AkkaSpec("akka.loglevel=INFO\nakka.actor.debug.receive=off
     "reliably cancel subscriptions when UserIn fails early" in assertAllStagesStopped {
       val ex = new Exception("hello")
       val (sub, out1, out2) =
-        FlowGraph.runnable(Source.subscriber[ByteString], Sink.head[ByteString], Sink.head[SslTlsInbound])((_, _, _)) { implicit b ⇒
+        RunnableGraph.fromGraph(FlowGraph.create(Source.subscriber[ByteString], Sink.head[ByteString], Sink.head[SslTlsInbound])((_, _, _)) { implicit b ⇒
           (s, o1, o2) ⇒
             val tls = b.add(clientTls(EagerClose))
             Source.failed[SslTlsOutbound](ex) ~> tls.in1; tls.out1 ~> o1
             o2 <~ tls.out2; tls.in2 <~ s
-        }.run()
+            ClosedShape
+        }).run()
       the[Exception] thrownBy Await.result(out1, 1.second) should be(ex)
       the[Exception] thrownBy Await.result(out2, 1.second) should be(ex)
       Thread.sleep(500)

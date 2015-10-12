@@ -59,8 +59,9 @@ public class StreamPartialFlowGraphDocTest {
 
     final Sink<Integer, Future<Integer>> resultSink = Sink.<Integer>head();
 
-    final RunnableGraph<Future<Integer>> g = FlowGraph.factory()
-        .runnable(resultSink, (builder, sink) -> {
+    final RunnableGraph<Future<Integer>> g =
+      RunnableGraph.<Future<Integer>>fromGraph(
+        FlowGraph.factory().create(resultSink, (builder, sink) -> {
           // import the partial flow graph explicitly
           final UniformFanInShape<Integer, Integer> pm = builder.graph(pickMaxOfThree);
           
@@ -68,7 +69,8 @@ public class StreamPartialFlowGraphDocTest {
           builder.from(Source.single(2)).to(pm.in(1));
           builder.from(Source.single(3)).to(pm.in(2));
           builder.from(pm.out()).to(sink);
-        });
+          return ClosedShape.getInstance();
+        }));
     
     final Future<Integer> max = g.run(mat);
     //#simple-partial-flow-graph
