@@ -19,6 +19,7 @@ import akka.util.ByteString;
 import scala.Tuple3;
 import scala.runtime.BoxedUnit;
 
+import org.reactivestreams.Subscription;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -46,66 +47,56 @@ public class RecipeKeepAlive extends RecipeTest {
   public void workForVersion1() throws Exception {
     new JavaTestKit(system) {
       {
-        final Source<Tick, TestPublisher.Probe<Tick>> ticks = TestSource.probe(system);
-        final Source<ByteString, TestPublisher.Probe<ByteString>> data = TestSource.probe(system);
-        final Sink<ByteString, TestSubscriber.Probe<ByteString>> sink = TestSink.probe(system);
+        final TestPublisher.Probe<Tick> tickPub = TestPublisher.<Tick>probe(0, system);
+        final TestPublisher.Probe<ByteString> dataPub = TestPublisher.<ByteString>probe(0, system);
+        final TestSubscriber.ManualProbe<ByteString> sub = TestSubscriber.<ByteString>manualProbe(system);
+        final Source<Tick, BoxedUnit> ticks = Source.from(tickPub);
 
-        ByteString keepAliveMessage = ByteString.fromArray(new byte[] { 11 });
+        final Source<ByteString, BoxedUnit> dataStream = Source.from(dataPub);
+        final ByteString keepAliveMessage = ByteString.fromArray(new byte[]{11});
+        final Sink<ByteString, BoxedUnit> sink = Sink.create(sub);
 
         //@formatter:off
         //#inject-keepalive
         Flow<Tick, ByteString, BoxedUnit> tickToKeepAlivePacket =
           Flow.of(Tick.class).conflate(tick -> keepAliveMessage, (msg, newTick) -> msg);
 
-        final Tuple3<
-            TestPublisher.Probe<Tick>,
-            TestPublisher.Probe<ByteString>,
-            TestSubscriber.Probe<ByteString>
-          > ticksDataRes =
-          RunnableGraph.<Tuple3<
-            TestPublisher.Probe<Tick>,
-            TestPublisher.Probe<ByteString>,
-            TestSubscriber.Probe<ByteString>>>fromGraph(
-            FlowGraph.factory().create3(ticks, data, sink,
-            (t, d, s) -> new Tuple3<>(t, d, s),
-            (builder, t, d, s) -> {
-              final int secondaryPorts = 1;
+        final RunnableGraph<BoxedUnit> graph = RunnableGraph.fromGraph(
+          FlowGraph.create((builder) -> {
               final MergePreferredShape<ByteString> unfairMerge =
-                builder.graph(MergePreferred.create(secondaryPorts));
+                builder.graph(MergePreferred.create(1));
               // If data is available then no keepalive is injected
-              builder.from(d).to(unfairMerge.preferred());
-              builder.from(t).via(tickToKeepAlivePacket).to(unfairMerge.in(0));
-              builder.from(unfairMerge.out()).to(s);
+              builder.from(dataStream).to(unfairMerge.preferred());
+              builder.from(ticks).via(tickToKeepAlivePacket).to(unfairMerge.in(0));
+              builder.from(unfairMerge.out()).to(sink);
               return ClosedShape.getInstance();
             }
-          )).run(mat);
+          ));
         //#inject-keepalive
         //@formatter:on
-
-        final TestPublisher.Probe<Tick> manualTicks = ticksDataRes._1();
-        final TestPublisher.Probe<ByteString> manualData = ticksDataRes._2();
-        final TestSubscriber.Probe<ByteString> sub = ticksDataRes._3();
-
-        manualTicks.sendNext(TICK);
+        graph.run(mat);
+        final Subscription subscription = sub.expectSubscription();
+        tickPub.sendNext(TICK);
 
         // pending data will overcome the keepalive
-        manualData.sendNext(ByteString.fromArray(new byte[] { 1 }));
-        manualData.sendNext(ByteString.fromArray(new byte[] { 2 }));
-        manualData.sendNext(ByteString.fromArray(new byte[] { 3 }));
+        dataPub.sendNext(ByteString.fromArray(new byte[]{1}));
+        dataPub.sendNext(ByteString.fromArray(new byte[]{2}));
+        dataPub.sendNext(ByteString.fromArray(new byte[]{3}));
 
-        sub.requestNext(ByteString.fromArray(new byte[] { 1 }));
-        sub.request(2);
-        sub.expectNext(ByteString.fromArray(new byte[] { 2 }));
-        sub.expectNext(ByteString.fromArray(new byte[] { 3 }));
+        subscription.request(1);
+        sub.expectNext(ByteString.fromArray(new byte[]{1}));
+        subscription.request(2);
+        sub.expectNext(ByteString.fromArray(new byte[]{2}));
+        sub.expectNext(keepAliveMessage);
+        subscription.request(1);
+        sub.expectNext(ByteString.fromArray(new byte[]{3}));
 
-        sub.requestNext(keepAliveMessage);
-
-        sub.request(1);
-        manualTicks.sendNext(TICK);
+        subscription.request(1);
+        tickPub.sendNext(TICK);
         sub.expectNext(keepAliveMessage);
 
-        manualData.sendComplete();
-        manualTicks.sendComplete();
+        dataPub.sendComplete();
+        tickPub.sendComplete();
 
         sub.expectComplete();
       }

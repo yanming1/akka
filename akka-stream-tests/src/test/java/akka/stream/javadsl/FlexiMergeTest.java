@@ -46,7 +46,7 @@ public class FlexiMergeTest {
   @Test
   public void mustBuildSimpleFairMerge() throws Exception {
     final Future<List<String>> all = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(Sink.<List<String>>head(),
+      .create(Sink.<List<String>>head(),
         new Function2<Builder<Future<List<String>>>, SinkShape<List<String>>, ClosedShape>() {
           @Override
           public ClosedShape apply(Builder<Future<List<String>>> b, SinkShape<List<String>> sink)
@@ -66,7 +66,7 @@ public class FlexiMergeTest {
     @Test
   public void mustBuildSimpleRoundRobinMerge() throws Exception {
     final Future<List<String>> all = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(Sink.<List<String>>head(),
+      .create(Sink.<List<String>>head(),
         new Function2<Builder<Future<List<String>>>, SinkShape<List<String>>, ClosedShape>() {
           @Override
           public ClosedShape apply(Builder<Future<List<String>>> b, SinkShape<List<String>> sink)
@@ -90,7 +90,7 @@ public class FlexiMergeTest {
     final Source<String, BoxedUnit> inB = Source.from(Arrays.asList("a", "b", "c"));
 
     final Future<List<Pair<Integer, String>>> all = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(Sink.<List<Pair<Integer, String>>>head(),
+      .create(Sink.<List<Pair<Integer, String>>>head(),
         new Function2<Builder<Future<List<Pair<Integer, String>>>>, SinkShape<List<Pair<Integer, String>>>, ClosedShape>() {
           @Override
           public ClosedShape apply(Builder<Future<List<Pair<Integer, String>>>> b, SinkShape<List<Pair<Integer, String>>> sink)
@@ -117,7 +117,7 @@ public class FlexiMergeTest {
     final Source<String, BoxedUnit> inC = Source.from(Arrays.asList("a", "b", "c"));
 
     final Future<List<Triple<Long, Integer, String>>> all = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(Sink.<List<Triple<Long, Integer, String>>> head(),
+      .create(Sink.<List<Triple<Long, Integer, String>>> head(),
             new Function2<Builder<Future<List<Triple<Long, Integer, String>>>>, SinkShape<List<Triple<Long, Integer, String>>>, ClosedShape>() {
               @Override
               public ClosedShape apply(Builder<Future<List<Triple<Long, Integer, String>>>> b, SinkShape<List<Triple<Long, Integer, String>>> sink)

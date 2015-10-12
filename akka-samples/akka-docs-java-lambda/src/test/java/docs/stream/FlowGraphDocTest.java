@@ -55,7 +55,7 @@ public class FlowGraphDocTest {
 
     final RunnableGraph<Future<List<String>>> result =
       RunnableGraph.<Future<List<String>>>fromGraph(
-        FlowGraph.factory()
+        FlowGraph
         .create(
           sink,
           (builder, out) -> {
@@ -83,7 +83,7 @@ public class FlowGraphDocTest {
       //#simple-graph
       final RunnableGraph<BoxedUnit> g =
         RunnableGraph.<BoxedUnit>fromGraph(
-          FlowGraph.factory()
+          FlowGraph
             .create((b) -> {
                 final Source<Integer, BoxedUnit> source1 = Source.from(Arrays.asList(1, 2, 3, 4, 5));
                 final Source<Integer, BoxedUnit> source2 = Source.from(Arrays.asList(1, 2, 3, 4, 5));
@@ -94,11 +94,11 @@ public class FlowGraphDocTest {
               }
             )
         );
-      // unconnected zip.out (!) => "must have at least 1 outgoing edge"
+      // unconnected zip.out (!) => "The inlets [] and outlets [] must correspond to the inlets [] and outlets [ZipWith2.out]"
       //#simple-graph
       fail("expected IllegalArgumentException");
     } catch (IllegalArgumentException e) {
-      assertTrue(e.getMessage().contains("unconnected"));
+      assertTrue(e != null && e.getMessage() != null && e.getMessage().contains("must correspond to"));
     }
   }
 
@@ -111,7 +111,7 @@ public class FlowGraphDocTest {
 
     final RunnableGraph<Pair<Future<Integer>, Future<Integer>>> g =
       RunnableGraph.<Pair<Future<Integer>, Future<Integer>>>fromGraph(
-        FlowGraph.factory()
+        FlowGraph
           .create(
             topHeadSink, // import this sink into the graph
             bottomHeadSink, // and this as well
@@ -145,7 +145,7 @@ public class FlowGraphDocTest {
       });
 
     final Flow<Integer, Integer, Future<Integer>> foldingFlow = Flow.fromGraph(
-      FlowGraph.factory().create(foldSink,
+      FlowGraph.create(foldSink,
       (b, fold) -> {
         return new FlowShape<>(
           fold.inlet(),
@@ -156,7 +156,7 @@ public class FlowGraphDocTest {
     //#flow-graph-matvalue-cycle
     // This cannot produce any value:
     final Source<Integer, Future<Integer>> cyclicSource = Source.fromGraph(
-      FlowGraph.factory().create(foldSink,
+      FlowGraph.create(foldSink,
       (b, fold) -> {
         // - Fold cannot complete until its upstream mapAsync completes
         // - mapAsync cannot complete until the materialized Future produced by

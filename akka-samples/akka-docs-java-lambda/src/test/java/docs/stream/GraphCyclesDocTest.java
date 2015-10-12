@@ -46,7 +46,7 @@ public class GraphCyclesDocTest {
         return s;
       });
 
-    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
+    RunnableGraph.fromGraph(FlowGraph.create(b -> {
       final UniformFanInShape<Integer, Integer> merge = b.graph(Merge.create(2));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
 
@@ -67,7 +67,7 @@ public class GraphCyclesDocTest {
         });
     //#unfair
     // WARNING! The graph below stops consuming from "source" after a few steps
-    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
+    RunnableGraph.fromGraph(FlowGraph.create(b -> {
       final MergePreferredShape<Integer> merge = b.graph(MergePreferred.create(1));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
 
@@ -86,7 +86,7 @@ public class GraphCyclesDocTest {
           return s;
         });
     //#dropping
-    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
+    RunnableGraph.fromGraph(FlowGraph.create(b -> {
       final UniformFanInShape<Integer, Integer> merge = b.graph(Merge.create(2));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
       final FlowShape<Integer, Integer> droppyFlow = b.graph(
@@ -108,7 +108,7 @@ public class GraphCyclesDocTest {
         });
     //#zipping-dead
     // WARNING! The graph below never processes any elements
-    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
+    RunnableGraph.fromGraph(FlowGraph.create(b -> {
       final FanInShape2<Integer, Integer, Integer>
         zip = b.graph(ZipWith.create((Integer left, Integer right) -> left));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));
@@ -129,7 +129,7 @@ public class GraphCyclesDocTest {
           return s;
         });
     //#zipping-live
-    RunnableGraph.fromGraph(FlowGraph.factory().create(b -> {
+    RunnableGraph.fromGraph(FlowGraph.create(b -> {
       final FanInShape2<Integer, Integer, Integer>
         zip = b.graph(ZipWith.create((Integer left, Integer right) -> left));
       final UniformFanOutShape<Integer, Integer> bcast = b.graph(Broadcast.create(2));

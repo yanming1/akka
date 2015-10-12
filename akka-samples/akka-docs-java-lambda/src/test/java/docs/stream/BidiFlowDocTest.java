@@ -111,7 +111,7 @@ public class BidiFlowDocTest {
   @SuppressWarnings("unused")
   //#codec
   public final BidiFlow<Message, ByteString, ByteString, Message, BoxedUnit> codecVerbose =
-      BidiFlow.fromGraph(FlowGraph.factory().create(b -> {
+      BidiFlow.fromGraph(FlowGraph.create(b -> {
         final FlowShape<Message, ByteString> top =
                 b.graph(Flow.of(Message.class).map(BidiFlowDocTest::toBytes));
         final FlowShape<ByteString, Message> bottom =
@@ -187,7 +187,7 @@ public class BidiFlowDocTest {
   }
   
   public final BidiFlow<ByteString, ByteString, ByteString, ByteString, BoxedUnit> framing =
-      BidiFlow.fromGraph(FlowGraph.factory().create(b -> {
+      BidiFlow.fromGraph(FlowGraph.create(b -> {
         final FlowShape<ByteString, ByteString> top =
                 b.graph(Flow.of(ByteString.class).map(BidiFlowDocTest::addLengthHeader));
         final FlowShape<ByteString, ByteString> bottom =

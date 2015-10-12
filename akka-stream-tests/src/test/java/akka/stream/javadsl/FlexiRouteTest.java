@@ -46,7 +46,7 @@ public class FlexiRouteTest {
   @Test
   public void mustBuildSimpleFairRoute() throws Exception {
     final Pair<Future<List<String>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(
+      .create(
         out1,
         out2,
         Keep.<Future<List<String>>, Future<List<String>>>both(),
@@ -77,7 +77,7 @@ public class FlexiRouteTest {
   @Test
   public void mustBuildSimpleRoundRobinRoute() throws Exception {
     final Pair<Future<List<String>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(
+      .create(
         out1,
         out2,
         Keep.<Future<List<String>>, Future<List<String>>>both(),
@@ -110,7 +110,7 @@ public class FlexiRouteTest {
     pairs.add(new Pair<Integer, String>(4, "D"));
     
     final Pair<Future<List<Integer>>, Future<List<String>>> result = RunnableGraph.fromGraph(FlowGraph
-      .factory().create(
+      .create(
           Sink.<List<Integer>>head(),
           out2,
           Keep.<Future<List<Integer>>, Future<List<String>>>both(),

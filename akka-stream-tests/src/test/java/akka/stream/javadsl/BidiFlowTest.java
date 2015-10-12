@@ -35,7 +35,7 @@ public class BidiFlowTest extends StreamTest {
       "FlowTest", AkkaSpec.testConf());
 
   private final BidiFlow<Integer, Long, ByteString, String, BoxedUnit> bidi = BidiFlow
-      .fromGraph(FlowGraph.factory().create(
+      .fromGraph(FlowGraph.create(
               new Function<FlowGraph.Builder<BoxedUnit>, BidiShape<Integer, Long, ByteString, String>>() {
                   @Override
                   public BidiShape<Integer, Long, ByteString, String> apply(Builder<BoxedUnit> b)
@@ -61,7 +61,7 @@ public class BidiFlowTest extends StreamTest {
 
   private final BidiFlow<Long, Integer, String, ByteString, BoxedUnit> inverse = BidiFlow
       .fromGraph(
-              FlowGraph.factory().create(
+              FlowGraph.create(
                       new Function<FlowGraph.Builder<BoxedUnit>, BidiShape<Long, Integer, String, ByteString>>() {
                           @Override
                           public BidiShape<Long, Integer, String, ByteString> apply(Builder<BoxedUnit> b)
@@ -87,7 +87,7 @@ public class BidiFlowTest extends StreamTest {
 
   private final BidiFlow<Integer, Long, ByteString, String, Future<Integer>> bidiMat = BidiFlow
       .fromGraph(
-              FlowGraph.factory().create(
+              FlowGraph.create(
                       Sink.<Integer>head(),
                       new Function2<FlowGraph.Builder<Future<Integer>>, SinkShape<Integer>, BidiShape<Integer, Long, ByteString, String>>() {
                           @Override
@@ -127,7 +127,6 @@ public class BidiFlowTest extends StreamTest {
   public void mustWorkInIsolation() throws Exception {
     final Pair<Future<Long>, Future<String>> p =
       RunnableGraph.fromGraph(FlowGraph
-        .factory()
         .create(Sink.<Long> head(), Sink.<String> head(),
             Keep.<Future<Long>, Future<String>> both(),
             new Function3<Builder<Pair<Future<Long>, Future<String>>>, SinkShape<Long>, SinkShape<String>, ClosedShape>() {
@@ -203,7 +202,7 @@ public class BidiFlowTest extends StreamTest {
   @Test
   public void mustMaterializeToItsValue() throws Exception {
     final Future<Integer> f = RunnableGraph.fromGraph(
-      FlowGraph.factory().create(bidiMat,
+      FlowGraph.create(bidiMat,
         new Function2<Builder<Future<Integer> >, BidiShape<Integer, Long, ByteString, String>, ClosedShape>() {
       @Override
       public ClosedShape apply(Builder<Future<Integer>> b,
@@ -231,7 +230,7 @@ public class BidiFlowTest extends StreamTest {
 
   @Test
   public void mustCombineMaterializationValues() throws Exception {
-    final Flow<String, Integer, Future<Integer>> left = Flow.fromGraph(FlowGraph.factory().create(
+    final Flow<String, Integer, Future<Integer>> left = Flow.fromGraph(FlowGraph.create(
             Sink.<Integer>head(), new Function2<Builder<Future<Integer>>, SinkShape<Integer>, FlowShape<String, Integer>>() {
                 @Override
                 public FlowShape<String, Integer> apply(Builder<Future<Integer>> b,
@@ -251,7 +250,7 @@ public class BidiFlowTest extends StreamTest {
                     return new FlowShape<String, Integer>(flow.inlet(), merge.out());
                 }
             }));
-    final Flow<Long, ByteString, Future<List<Long>>> right = Flow.fromGraph(FlowGraph.factory().create(
+    final Flow<Long, ByteString, Future<List<Long>>> right = Flow.fromGraph(FlowGraph.create(
             Sink.<List<Long>>head(), new Function2<Builder<Future<List<Long>>>, SinkShape<List<Long>>, FlowShape<Long, ByteString>>() {
                 @Override
                 public FlowShape<Long, ByteString> apply(Builder<Future<List<Long>>> b,

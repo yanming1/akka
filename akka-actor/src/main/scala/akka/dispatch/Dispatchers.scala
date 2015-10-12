@@ -8,7 +8,7 @@ import java.util.concurrent.{ ConcurrentHashMap, TimeUnit, ThreadFactory }
 import com.typesafe.config.{ ConfigFactory, Config }
 import akka.actor.{ Scheduler, DynamicAccess, ActorSystem }
 import akka.event.Logging.Warning
-import akka.event.{Logging, EventStream}
+import akka.event.EventStream
 import scala.concurrent.duration.Duration
 import akka.ConfigurationException
 import akka.actor.Deploy
@@ -134,7 +134,7 @@ class Dispatchers(val settings: ActorSystem.Settings, val prerequisites: Dispatc
    */
   private[akka] def config(id: String, appConfig: Config): Config = {
     import scala.collection.JavaConverters._
-    val simpleName = Logging.simpleName(id)
+    def simpleName = id.substring(id.lastIndexOf('.') + 1)
     idConfig(id)
       .withFallback(appConfig)
       .withFallback(ConfigFactory.parseMap(Map("name" -> simpleName).asJava))

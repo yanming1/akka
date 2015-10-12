@@ -339,7 +339,7 @@ public class FlowTest extends StreamTest {
     final Sink<String, Publisher<String>> publisher = Sink.publisher();
     
     final Source<String, BoxedUnit> source = Source.fromGraph(
-            FlowGraph.factory().create(new Function<FlowGraph.Builder<BoxedUnit>, SourceShape<String>>() {
+            FlowGraph.create(new Function<FlowGraph.Builder<BoxedUnit>, SourceShape<String>>() {
               @Override
               public SourceShape<String> apply(Builder<BoxedUnit> b) throws Exception {
                 final UniformFanInShape<String, String> merge = b.graph(Merge.<String>create(2));
@@ -363,7 +363,7 @@ public class FlowTest extends StreamTest {
     final Iterable<String> input1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> input2 = Arrays.asList(1, 2, 3);
 
-    RunnableGraph.fromGraph(FlowGraph.factory().create(new Function<Builder<BoxedUnit>, ClosedShape>(){
+    RunnableGraph.fromGraph(FlowGraph.create(new Function<Builder<BoxedUnit>, ClosedShape>(){
       public ClosedShape apply(Builder<BoxedUnit> b) {
         final Outlet<String> in1 = b.source(Source.from(input1));
         final Outlet<Integer> in2 = b.source(Source.from(input2));
@@ -598,7 +598,7 @@ public class FlowTest extends StreamTest {
     final Sink<String, ?> out2 = Sink.ignore();
 
     final Sink<String, BoxedUnit> sink = Sink.fromGraph(
-            FlowGraph.factory().create(new Function<FlowGraph.Builder<BoxedUnit>, SinkShape<String>>() {
+            FlowGraph.create(new Function<FlowGraph.Builder<BoxedUnit>, SinkShape<String>>() {
               @Override
               public SinkShape<String> apply(Builder<BoxedUnit> b) throws Exception {
                 final UniformFanOutShape<String, String> broadcast = b.graph(Broadcast.<String>create(2, true));

@@ -70,7 +70,7 @@ public class FlowGraphTest extends StreamTest {
     final Sink<String, Publisher<String>> publisher = Sink.publisher();
     
     final Source<String, BoxedUnit> source = Source.fromGraph(
-            FlowGraph.factory().create(new Function<FlowGraph.Builder<BoxedUnit>, SourceShape<String>>() {
+            FlowGraph.create(new Function<FlowGraph.Builder<BoxedUnit>, SourceShape<String>>() {
               @Override
               public SourceShape<String> apply(Builder<BoxedUnit> b) throws Exception {
                 final UniformFanInShape<String, String> merge = b.graph(Merge.<String>create(2));
@@ -94,7 +94,7 @@ public class FlowGraphTest extends StreamTest {
     final Iterable<String> input1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> input2 = Arrays.asList(1, 2, 3);
 
-    RunnableGraph.fromGraph( FlowGraph.factory().create(
+    RunnableGraph.fromGraph( FlowGraph.create(
       new Function<Builder<BoxedUnit>,ClosedShape>() {
         @Override
         public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
@@ -129,7 +129,7 @@ public class FlowGraphTest extends StreamTest {
     final Iterable<String> expected1 = Arrays.asList("A", "B", "C");
     final Iterable<Integer> expected2 = Arrays.asList(1, 2, 3);
 
-    RunnableGraph.fromGraph(FlowGraph.factory().create(
+    RunnableGraph.fromGraph(FlowGraph.create(
         new Function<Builder<BoxedUnit>, ClosedShape>() {
           @Override
           public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
@@ -161,7 +161,7 @@ public class FlowGraphTest extends StreamTest {
     final JavaTestKit probe1 = new JavaTestKit(system);
     final JavaTestKit probe2 = new JavaTestKit(system);
 
-    RunnableGraph.fromGraph(FlowGraph.factory().create(
+    RunnableGraph.fromGraph(FlowGraph.create(
       new Function<Builder<BoxedUnit>, ClosedShape>() {
         @Override
         public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
@@ -204,7 +204,7 @@ public class FlowGraphTest extends StreamTest {
     final JavaTestKit probe3 = new JavaTestKit(system);
     final JavaTestKit probe4 = new JavaTestKit(system);
 
-    RunnableGraph.fromGraph(FlowGraph.factory().create(
+    RunnableGraph.fromGraph(FlowGraph.create(
       new Function<Builder<BoxedUnit>, ClosedShape>() {
         @Override
         public ClosedShape apply(final Builder<BoxedUnit> b) throws Exception {
@@ -258,7 +258,7 @@ public class FlowGraphTest extends StreamTest {
       }
     });
     
-    final Future<Integer> future = RunnableGraph.fromGraph(FlowGraph.factory().create(Sink.<Integer>head(),
+    final Future<Integer> future = RunnableGraph.fromGraph(FlowGraph.create(Sink.<Integer>head(),
       new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
       public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
@@ -289,7 +289,7 @@ public class FlowGraphTest extends StreamTest {
             });
 
     final Future<Integer> future = RunnableGraph.fromGraph(
-      FlowGraph.factory().create(Sink.<Integer>head(),
+      FlowGraph.create(Sink.<Integer>head(),
         new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
       public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
@@ -314,7 +314,7 @@ public class FlowGraphTest extends StreamTest {
     final TestProbe probe = TestProbe.apply(system);
 
     final Future<Integer> future = RunnableGraph.fromGraph(
-      FlowGraph.factory().create(Sink.<Integer> head(), new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
+      FlowGraph.create(Sink.<Integer> head(), new Function2<Builder<Future<Integer>>, SinkShape<Integer>, ClosedShape>() {
       @Override
       public ClosedShape apply(Builder<Future<Integer>> b, SinkShape<Integer> out) throws Exception {
         b.from(Source.single(1)).to(out);

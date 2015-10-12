@@ -7,7 +7,7 @@ import akka.stream.scaladsl
 import akka.stream.{ Inlet, Shape, Graph }
 import akka.japi.function
 
-trait GraphCreate {
+private[stream] abstract class GraphCreate {
   /**
    * Creates a new [[Graph]] of the given [[Shape]] by passing a [[FlowGraph.Builder]] to the given create function.
    */

@@ -234,9 +234,7 @@ object Concat {
 
 // flow graph //
 
-object FlowGraph {
-
-  val factory: GraphCreate = new GraphCreate {}
+object FlowGraph extends GraphCreate {
 
   /**
    * Start building a [[FlowGraph]].
